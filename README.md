@@ -1,5 +1,9 @@
 # MOTHER Deck — Athena (full system, private)
 
+![MOTHER cyber deck](media/cyber-deck-preview.jpeg)
+
+▶ **[Watch the deck demo video](media/cyber-demo.mp4)** — GitHub plays it in the browser.
+
 Private, scrubbed backup of the complete Athena system: the **web-builder
 pipeline** plus the **MOTHER cybersecurity deck** (a personal red/blue learning
 lab). Secrets, API keys, client data, and finished client sites have been
