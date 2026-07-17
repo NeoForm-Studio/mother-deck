@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — RECON MAP</title>
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     RECON MAP — the sector-map 3D engine repurposed as a live
+     network topology. Core = attack box. Each conglomerate = a
+     discovered host. Satellites = open ports/services. Ingests real
+     nmap output. Click a host to set it as target.
+     Standalone preview → becomes MOTHER deck module 02.
+     ═══════════════════════════════════════════════════════════════ */
+  :root {
+    --phos:#33ff33; --phos-br:#85ff85; --phos-dim:#1a8c1a; --phos-ghost:#0c3d0c;
+    --holo:#00c8ff; --amber:#e8a63a; --alert:#ff4433;
+    --bg:#030603; --bg-panel:#071007; --bg-deep:#020402;
+    --border:rgba(51,255,51,0.22); --border-dim:rgba(51,255,51,0.08);
+    --font:'Courier New','Lucida Console',monospace;
+    --glow:0 0 6px rgba(51,255,51,0.5);
+  }
+  * { box-sizing:border-box; margin:0; }
+  html,body { height:100%; }
+  body { background:var(--bg-deep); color:var(--phos); font-family:var(--font);
+    overflow:hidden; display:grid; grid-template-rows:auto 1fr; }
+  body::after { content:''; position:fixed; inset:0; pointer-events:none; z-index:90;
+    background:repeating-linear-gradient(to bottom,transparent 0 2px,rgba(0,0,0,0.15) 2px 4px),
+      radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,0.55) 100%); }
+
+  header { display:flex; align-items:center; gap:16px; padding:8px 16px;
+    border-bottom:1px solid var(--border); background:linear-gradient(180deg,rgba(51,255,51,0.05),transparent); }
+  .brand { font-size:15px; letter-spacing:0.3em; color:var(--amber); text-shadow:0 0 8px rgba(232,166,58,0.5); white-space:nowrap; }
+  .brand small { display:block; font-size:8px; letter-spacing:0.22em; color:var(--phos-dim); }
+  .stats { display:flex; gap:18px; margin-left:12px; }
+  .stat { font-size:9px; letter-spacing:0.12em; color:var(--phos-dim); text-transform:uppercase; }
+  .stat b { display:block; font-size:16px; color:var(--amber); text-shadow:0 0 6px rgba(232,166,58,0.5); letter-spacing:0.05em; }
+  .spacer { flex:1; }
+  .target-readout { font-size:10px; letter-spacing:0.14em; color:var(--phos-dim); text-transform:uppercase; text-align:right; }
+  .target-readout b { color:var(--holo); text-shadow:0 0 5px rgba(0,200,255,0.5); font-size:13px; letter-spacing:0.08em; }
+
+  .body { display:grid; grid-template-columns:1fr 320px; min-height:0; }
+
+  /* Map */
+  .map-wrap { position:relative; overflow:hidden; }
+  #map { width:100%; height:100%; display:block; cursor:grab; }
+  #map.pointing { cursor:pointer; }
+  .legend { position:absolute; left:12px; bottom:12px; display:flex; flex-direction:column; gap:4px;
+    font-size:9px; letter-spacing:0.1em; color:var(--phos-dim); background:rgba(3,6,3,0.7);
+    border:1px solid var(--border-dim); padding:8px 10px; }
+  .legend .row { display:flex; align-items:center; gap:7px; }
+  .legend .dot { width:8px; height:8px; border-radius:50%; }
+  .empty-hint { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:10px; color:var(--phos-dim); pointer-events:none; text-align:center; }
+  .empty-hint .big { font-size:15px; letter-spacing:0.24em; color:var(--phos); }
+  .empty-hint .sm { font-size:11px; letter-spacing:0.1em; }
+
+  /* Side panel */
+  .side { border-left:1px solid var(--border); background:var(--bg-panel);
+    display:flex; flex-direction:column; min-height:0; }
+  .side__sec { border-bottom:1px solid var(--border-dim); padding:10px 12px; }
+  .side__title { font-size:9px; letter-spacing:0.22em; color:var(--amber); opacity:0.9; text-transform:uppercase; margin-bottom:8px; }
+  textarea#ingest { width:100%; height:120px; resize:vertical; background:#041004; border:1px solid var(--border);
+    color:var(--phos); font-family:var(--font); font-size:10px; padding:7px; outline:none; line-height:1.4; }
+  textarea#ingest:focus { border-color:var(--phos); box-shadow:var(--glow); }
+  .btn-row { display:flex; gap:6px; margin-top:7px; }
+  .btn { flex:1; background:transparent; border:1px solid var(--phos-dim); color:var(--phos);
+    font-family:var(--font); font-weight:bold; font-size:10px; letter-spacing:0.1em; padding:6px 4px;
+    cursor:pointer; text-transform:uppercase; transition:all 120ms ease; }
+  .btn:hover { background:rgba(51,255,51,0.1); box-shadow:var(--glow); }
+  .btn--ghost { border-color:var(--border); color:var(--phos-dim); font-weight:normal; }
+  .btn--go { border-color:var(--phos); }
+
+  .hosts { flex:1; overflow-y:auto; min-height:0; }
+  .host-row { display:grid; grid-template-columns:1fr auto; gap:6px; align-items:center;
+    padding:7px 12px; border-bottom:1px solid var(--border-dim); cursor:pointer;
+    transition:background 120ms ease; }
+  .host-row:hover { background:rgba(51,255,51,0.05); }
+  .host-row--target { background:rgba(0,200,255,0.08); border-left:2px solid var(--holo); }
+  .host-row__ip { font-size:11px; color:var(--phos); letter-spacing:0.04em; }
+  .host-row__name { font-size:8px; color:var(--phos-dim); letter-spacing:0.06em; }
+  .host-row__ports { font-size:9px; color:var(--amber); letter-spacing:0.06em; text-align:right; white-space:nowrap; }
+  .host-row--target .host-row__ip { color:var(--holo); }
+
+  .detail { padding:10px 12px; }
+  .detail .dt-ip { font-size:13px; color:var(--holo); text-shadow:0 0 5px rgba(0,200,255,0.4); letter-spacing:0.06em; }
+  .detail .dt-name { font-size:9px; color:var(--phos-dim); margin-bottom:8px; }
+  .port-tag { display:inline-flex; gap:5px; align-items:center; border:1px solid var(--border-dim);
+    padding:2px 7px; margin:2px; font-size:10px; letter-spacing:0.04em; }
+  .port-tag .pnum { color:var(--phos-br); }
+  .port-tag .psvc { color:var(--phos-dim); font-size:9px; }
+  .port-tag.web { border-color:rgba(0,200,255,0.4); }
+  .port-tag.web .pnum { color:var(--holo); }
+  .port-tag.remote { border-color:rgba(232,166,58,0.4); }
+  .port-tag.remote .pnum { color:var(--amber); }
+  .port-tag.risky { border-color:rgba(255,68,51,0.5); }
+  .port-tag.risky .pnum { color:var(--alert); }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">RECON MAP<small>MOTHER · SYS.02 · LIVE NETWORK TOPOLOGY</small></div>
+    <div class="stats">
+      <div class="stat">Hosts<b id="s-hosts">0</b></div>
+      <div class="stat">Open Ports<b id="s-ports">0</b></div>
+      <div class="stat">Services<b id="s-svcs">0</b></div>
+    </div>
+    <div class="spacer"></div>
+    <div class="target-readout">Active Target<br><b id="s-target">— NONE —</b></div>
+  </header>
+
+  <div class="body">
+    <div class="map-wrap">
+      <canvas id="map"></canvas>
+      <div class="empty-hint" id="empty-hint">
+        <div class="big">◇ NO HOSTS MAPPED ◇</div>
+        <div class="sm">paste nmap output → INGEST · or LOAD SAMPLE</div>
+      </div>
+      <div class="legend">
+        <div class="row"><span class="dot" style="background:#ffb000"></span> ATTACK CORE</div>
+        <div class="row"><span class="dot" style="background:#33ff33"></span> HOST · OPEN PORT</div>
+        <div class="row"><span class="dot" style="background:#00c8ff"></span> ACTIVE TARGET</div>
+        <div class="row"><span class="dot" style="background:#e8a63a"></span> REMOTE SVC</div>
+        <div class="row"><span class="dot" style="background:#ff4433"></span> RISKY SVC (smb/db/rdp)</div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="side__sec">
+        <div class="side__title">◤ INGEST NMAP ◥</div>
+        <textarea id="ingest" placeholder="Paste nmap output here…&#10;e.g.  nmap -sV 10.0.0.0/24"></textarea>
+        <div class="btn-row">
+          <button class="btn btn--go" id="btn-ingest">▶ INGEST</button>
+          <button class="btn btn--ghost" id="btn-sample">SAMPLE</button>
+          <button class="btn btn--ghost" id="btn-clear">CLEAR</button>
+        </div>
+      </div>
+      <div class="side__sec" style="flex:1; display:flex; flex-direction:column; min-height:0; padding:0;">
+        <div class="side__title" style="padding:10px 12px 6px;">◤ DISCOVERED HOSTS ◥</div>
+        <div class="hosts" id="host-list"></div>
+      </div>
+      <div class="side__sec" id="detail-sec" style="display:none;">
+        <div class="side__title">◤ TARGET DETAIL ◥</div>
+        <div class="detail" id="detail"></div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+  'use strict';
+  const COL = { phos:'#33ff33', phosBr:'#85ff85', phosDim:'#1a8c1a', phosGhost:'#0c3d0c',
+    holo:'#00c8ff', amber:'#e8a63a', alert:'#ff4433', core:'#ffb000' };
+  const $ = (id) => document.getElementById(id);
+
+  /* ── Port service classification ─────────────────────────────── */
+  const WEB    = new Set([80,443,8080,8443,8000,8888,3000]);
+  const REMOTE = new Set([22,23,3389,5900,5901]);
+  const RISKY  = new Set([445,139,135,3306,5432,1433,1521,6379,27017,21]);
+  function portClass(p) {
+    if (WEB.has(p)) return 'web';
+    if (REMOTE.has(p)) return 'remote';
+    if (RISKY.has(p)) return 'risky';
+    return 'open';
+  }
+  function portColor(p, target) {
+    if (target) return COL.holo;
+    const c = portClass(p);
+    return c === 'web' ? COL.holo : c === 'remote' ? COL.amber : c === 'risky' ? COL.alert : COL.phos;
+  }
+
+  /* ── nmap normal-output parser ───────────────────────────────── */
+  function parseNmap(text) {
+    const hosts = [];
+    let cur = null;
+    for (const line of text.split('\n')) {
+      const rep = line.match(/Nmap scan report for\s+(.+)/i);
+      if (rep) {
+        if (cur) hosts.push(cur);
+        const raw = rep[1].trim();
+        // "hostname (1.2.3.4)"  or  "1.2.3.4"
+        const m = raw.match(/^(.*?)\s*\(([\d.]+)\)$/);
+        cur = m ? { hostname: m[1].trim(), ip: m[2] } : { hostname: '', ip: raw };
+        cur.up = true; cur.ports = []; cur.os = '';
+        continue;
+      }
+      if (!cur) continue;
+      if (/Host seems down|0 hosts up/i.test(line)) cur.up = false;
+      const os = line.match(/OS details:\s*(.+)/i) || line.match(/Running:\s*(.+)/i);
+      if (os) cur.os = os[1].trim();
+      // "22/tcp open ssh"  /  "443/tcp open https  Apache"
+      const pm = line.match(/^(\d+)\/(tcp|udp)\s+(\w+(?:\|\w+)?)\s+([^\s]+)(?:\s+(.*))?/i);
+      if (pm) {
+        const state = pm[3].toLowerCase();
+        if (state.startsWith('open')) {
+          cur.ports.push({ port: +pm[1], proto: pm[2], state, service: pm[4],
+            version: (pm[5] || '').trim() });
+        }
+      }
+    }
+    if (cur) hosts.push(cur);
+    return hosts.filter(h => h.up);
+  }
+
+  const SAMPLE = `Starting Nmap 7.99 ( https://nmap.org )
+Nmap scan report for gateway.lan (10.0.0.1)
+Host is up (0.0021s latency).
+PORT     STATE SERVICE
+22/tcp   open  ssh
+53/tcp   open  domain
+80/tcp   open  http
+443/tcp  open  https
+
+Nmap scan report for fileserver.lan (10.0.0.14)
+Host is up (0.0009s latency).
+PORT     STATE SERVICE
+139/tcp  open  netbios-ssn
+445/tcp  open  microsoft-ds
+3389/tcp open  ms-wbt-server
+Running: Microsoft Windows Server 2019
+
+Nmap scan report for dbhost.lan (10.0.0.22)
+Host is up (0.0015s latency).
+PORT     STATE SERVICE
+22/tcp   open  ssh
+3306/tcp open  mysql
+5432/tcp open  postgresql
+6379/tcp open  redis
+
+Nmap scan report for webapp.lan (10.0.0.30)
+Host is up (0.0011s latency).
+PORT     STATE SERVICE
+80/tcp   open  http
+8080/tcp open  http-proxy
+8443/tcp open  https-alt
+22/tcp   open  ssh`;
+
+  /* ── 3D engine (M2 fusion: sphere + rings + particles) ───────── */
+  const F = 300, SPHERE_R = 118, PITCH = 0.55, DEG = Math.PI/180;
+  let W = 800, H = 600, CX = 400, CY = 300, R = 150;
+  const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function mulberry32(seed){ return () => { seed|=0; seed=(seed+0x6d2b79f5)|0;
+    let t=Math.imul(seed^(seed>>>15),1|seed); t=(t+Math.imul(t^(t>>>7),61|t))^t;
+    return ((t^(t>>>14))>>>0)/4294967296; }; }
+
+  const PARTICLES = (() => { const rand = mulberry32(90210);
+    return Array.from({length:70}, () => ({ rad:20+rand()*100, a0:rand()*Math.PI*2,
+      spin:(rand()-0.35)*0.05, y0:(rand()-0.5)*90, bobA:2+rand()*5, bobF:0.15+rand()*0.35,
+      r:0.4+rand()*0.9, a:0.08+rand()*0.22, tw:0.3+rand()*1.4, ph:rand()*Math.PI*2,
+      col: rand()<0.15?COL.holo:(rand()<0.5?COL.phosDim:'#4a7a4a') })); })();
+
+  function makeProj(az,pitch){ const ca=Math.cos(az),sa=Math.sin(az),cp=Math.cos(pitch),sp=Math.sin(pitch);
+    return p => { const xr=p.x*ca-p.z*sa, zr=p.x*sa+p.z*ca, yr=p.y*cp-zr*sp, d=p.y*sp+zr*cp, s=F/(F+d);
+      return { x:CX+xr*s, y:CY+yr*s, s, d }; }; }
+  const easeOut = x => 1 - Math.pow(1-x, 3);
+
+  /* ── State ─────────────────────────────────────────────────── */
+  let hosts = [];          // {ip, hostname, ports[], theta, satsOff[]}
+  let targetIp = null;
+  let hoverIp = null;
+  let azimuth = 0, targetAz = 0, mouseX = 0, mouseY = 0;
+  let hubScreens = {};
+
+  function layoutHosts() {
+    const n = hosts.length;
+    hosts.forEach((h, i) => {
+      h.theta = n ? (i / n) * Math.PI * 2 : 0;
+      const rand = mulberry32(hashStr(h.ip) + 17);
+      h.satsOff = h.ports.map((pt, k) => {
+        const az = rand() * Math.PI * 2, el = (rand()-0.5)*Math.PI*0.75, d = 10 + rand()*10;
+        return { x:d*Math.cos(el)*Math.cos(az), y:d*Math.sin(el), z:d*Math.cos(el)*Math.sin(az),
+          r:1.3+rand()*1.1, phase:rand()*Math.PI*2, port:pt.port };
+      });
+    });
+  }
+  function hashStr(s){ let h=0; for (let i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))|0; return Math.abs(h); }
+  function hostByIp(ip){ return hosts.find(h => h.ip === ip); }
+  function frontAz(h){ return -h.theta - Math.PI/2; }
+
+  /* ── Canvas ─────────────────────────────────────────────────── */
+  const cv = $('map'), ctx = cv.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  function resize() {
+    const r = cv.getBoundingClientRect();
+    W = r.width; H = r.height; CX = W/2; CY = H/2 + 6; R = Math.min(W,H) * 0.30;
+    cv.width = W*dpr; cv.height = H*dpr; ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  new ResizeObserver(resize).observe(cv); resize();
+
+  function hubPos(h){ return { x:R*Math.cos(h.theta), y:0, z:R*Math.sin(h.theta) }; }
+
+  function line(a,b,color,w,alpha,dash){ ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color;
+    ctx.lineWidth=w; if(dash) ctx.setLineDash(dash); ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+    ctx.stroke(); ctx.restore(); }
+  function dot(x,y,r,fill,alpha,glow){ ctx.save(); ctx.globalAlpha=alpha; if(glow){ctx.shadowColor=glow;ctx.shadowBlur=8;}
+    ctx.fillStyle=fill; ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill(); ctx.restore(); }
+  function circlePts(r,y,proj,n=48){ const p=[]; for(let i=0;i<=n;i++){ const a=(i/n)*Math.PI*2;
+    p.push(proj({x:r*Math.cos(a),y,z:r*Math.sin(a)})); } return p; }
+  function strokeDepth(pts,base){ for(let i=1;i<pts.length;i++){ const front=(pts[i].d+pts[i-1].d)/2<0;
+    line(pts[i-1],pts[i],COL.phosGhost,0.7,front?base*2.2:base*0.5); } }
+
+  function render(t) {
+    ctx.clearRect(0,0,W,H);
+    const az = azimuth + (RM?0:Math.sin(t*0.4)*0.04) + mouseX*0.12;
+    const proj = makeProj(az, PITCH + mouseY*0.08);
+
+    // glow
+    ctx.save(); const g=ctx.createRadialGradient(CX,CY,4,CX,CY,Math.max(W,H)*0.4);
+    g.addColorStop(0,'rgba(255,176,0,0.05)'); g.addColorStop(0.4,'rgba(51,255,51,0.02)'); g.addColorStop(1,'transparent');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.restore();
+
+    // containment sphere
+    [-60,-30,0,30,60].forEach(la => { const y=-SPHERE_R*Math.sin(la*DEG), r=SPHERE_R*Math.cos(la*DEG);
+      strokeDepth(circlePts(r,y,proj), 0.09); });
+    for(let lo=0;lo<180;lo+=30){ const pts=[]; for(let i=0;i<=48;i++){ const a=(i/48)*Math.PI*2;
+      pts.push(proj({x:SPHERE_R*Math.cos(a)*Math.cos(lo*DEG),y:-SPHERE_R*Math.sin(a),z:SPHERE_R*Math.cos(a)*Math.sin(lo*DEG)})); }
+      strokeDepth(pts,0.09); }
+
+    // orbit rings
+    [R*0.5, R, R*1.35].forEach((rr,i)=> { const pts=circlePts(rr,0,proj,64);
+      ctx.save(); ctx.globalAlpha=0.4-i*0.1; ctx.strokeStyle=COL.phosGhost; ctx.lineWidth=0.7;
+      ctx.setLineDash([2,4]); ctx.lineDashOffset=RM?0:t*(i%2?1.4:-1.1); ctx.beginPath();
+      pts.forEach((p,k)=>k?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke(); ctx.restore(); });
+
+    // particles
+    PARTICLES.forEach(p => { const a=p.a0+(RM?0:t*p.spin), y=p.y0+(RM?0:Math.sin(t*p.bobF+p.ph)*p.bobA);
+      const pr=proj({x:p.rad*Math.cos(a),y,z:p.rad*Math.sin(a)}); const tw=RM?1:0.55+0.45*Math.sin(t*p.tw+p.ph);
+      dot(pr.x,pr.y,Math.max(0.3,p.r*pr.s),p.col,p.a*tw*Math.min(1.25,pr.s)); });
+
+    const core = proj({x:0,y:0,z:0});
+    const nodes = [], labels = [];
+    hubScreens = {};
+
+    hosts.forEach(h => {
+      const hw = hubPos(h), hp = proj(hw);
+      const isTarget = h.ip === targetIp, isHover = h.ip === hoverIp;
+      hubScreens[h.ip] = { x:hp.x, y:hp.y };
+
+      line(core, hp, isTarget?COL.holo:COL.phosGhost, isTarget?1:0.6,
+        isTarget?0.8:0.4, isTarget?[4,2]:[1,3]);
+
+      const drift = RM?0:t*0.18;
+      h.satsOff.forEach(o => {
+        const ca=Math.cos(drift+o.phase), sa=Math.sin(drift+o.phase);
+        const ox=o.x*ca+o.z*sa, oz=-o.x*sa+o.z*ca;
+        const sp = proj({x:hw.x+ox, y:hw.y+o.y, z:hw.z+oz});
+        line(hp, sp, isTarget?COL.holo:COL.phosGhost, 0.5, (isTarget?0.4:0.22));
+        nodes.push({ d:sp.d, x:sp.x, y:sp.y, r:o.r*sp.s,
+          fill: portColor(o.port, isTarget), alpha:(isTarget?0.95:0.65),
+          glow: isTarget?'rgba(0,200,255,0.6)':null });
+      });
+
+      nodes.push({ d:hp.d, x:hp.x, y:hp.y, r:4*hp.s,
+        fill: isTarget?COL.holo:(isHover?COL.phosBr:COL.phos),
+        alpha:1, glow: isTarget?'rgba(0,200,255,0.85)':(isHover?'rgba(133,255,133,0.7)':'rgba(51,255,51,0.5)') });
+
+      labels.push({ x:hp.x, y:hp.y-14*hp.s-4, d:hp.d, isTarget,
+        text:(h.hostname||h.ip), sub:h.ports.length+'p', hover:isHover });
+
+      if (isTarget) { // reticle
+        ctx.save(); ctx.globalAlpha=0.95; ctx.strokeStyle=COL.holo;
+        ctx.shadowColor='rgba(0,200,255,0.6)'; ctx.shadowBlur=5; ctx.lineWidth=0.9;
+        ctx.setLineDash([5,4]); ctx.lineDashOffset=RM?0:-t*6;
+        ctx.beginPath(); ctx.arc(hp.x,hp.y,13*hp.s,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+        const gg=16*hp.s; [[-gg,0,-gg+5,0],[gg-5,0,gg,0],[0,-gg,0,-gg+5],[0,gg-5,0,gg]].forEach(([x1,y1,x2,y2])=>{
+          ctx.beginPath(); ctx.moveTo(hp.x+x1,hp.y+y1); ctx.lineTo(hp.x+x2,hp.y+y2); ctx.stroke(); }); ctx.restore(); }
+    });
+
+    // core (attack box)
+    const pulse = RM?0:Math.sin(t*2)*1.4;
+    ctx.save(); ctx.globalAlpha=0.9; ctx.strokeStyle='rgba(255,176,0,0.4)';
+    ctx.beginPath(); ctx.arc(core.x,core.y,(11+pulse)*core.s,0,Math.PI*2); ctx.stroke(); ctx.restore();
+    nodes.push({ d:core.d, x:core.x, y:core.y, r:5.5*core.s, fill:COL.core, alpha:1,
+      glow:'rgba(255,176,0,0.7)', core:true });
+
+    nodes.sort((a,b)=>b.d-a.d);
+    nodes.forEach(n => { dot(n.x,n.y,Math.max(0.4,n.r),n.fill,n.alpha,n.glow);
+      if(n.core){ ctx.save(); ctx.fillStyle='#050501'; ctx.font='bold 8px Courier New'; ctx.textAlign='center';
+        ctx.fillText('⌂',n.x,n.y+2.8); ctx.restore(); } });
+
+    labels.forEach(l => { ctx.save();
+      ctx.globalAlpha = l.isTarget?1:(l.hover?0.95:0.7);
+      ctx.fillStyle = l.isTarget?COL.holo:(l.hover?COL.phosBr:COL.phos);
+      ctx.font = `${l.isTarget?'bold ':''}10px Courier New`; ctx.textAlign='center';
+      if(l.isTarget){ ctx.shadowColor='rgba(0,200,255,0.5)'; ctx.shadowBlur=5; }
+      ctx.fillText(l.text, l.x, l.y);
+      ctx.globalAlpha*=0.6; ctx.font='8px Courier New'; ctx.fillStyle=COL.phosDim; ctx.shadowBlur=0;
+      ctx.fillText(l.sub, l.x, l.y+9); ctx.restore(); });
+
+    // core label
+    ctx.save(); ctx.globalAlpha=0.8; ctx.fillStyle=COL.amber; ctx.font='8px Courier New'; ctx.textAlign='center';
+    ctx.fillText('ATTACK CORE', core.x, core.y+20*core.s); ctx.restore();
+  }
+
+  let last = performance.now();
+  (function loop(now){ const dt=Math.min(0.05,(now-last)/1000); last=now;
+    let diff = targetAz - azimuth; diff = ((diff+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;
+    azimuth += RM?diff:diff*Math.min(1,dt*3.6);
+    render(now/1000); requestAnimationFrame(loop); })(performance.now());
+
+  /* ── Interaction ────────────────────────────────────────────── */
+  function toEngine(e){ const r=cv.getBoundingClientRect();
+    return { x:e.clientX-r.left, y:e.clientY-r.top }; }
+  function hitHost(x,y){ let best=null,bd=22; for(const h of hosts){ const p=hubScreens[h.ip]; if(!p) continue;
+    const d=Math.hypot(p.x-x,p.y-y); if(d<bd){bd=d;best=h;} } return best; }
+
+  cv.addEventListener('mousemove', e => { const {x,y}=toEngine(e);
+    mouseX=(x/W)*2-1; mouseY=(y/H)*2-1; const h=hitHost(x,y); hoverIp=h?h.ip:null;
+    cv.classList.toggle('pointing', !!h && h.ip!==targetIp); });
+  cv.addEventListener('mouseleave', () => { mouseX=0; mouseY=0; hoverIp=null; });
+  cv.addEventListener('click', e => { const {x,y}=toEngine(e); const h=hitHost(x,y); if(h) setTarget(h.ip); });
+
+  /* ── Data ops ───────────────────────────────────────────────── */
+  function setHosts(list) {
+    hosts = list.map(h => ({ ...h }));
+    layoutHosts();
+    targetIp = null; hoverIp = null;
+    renderSidebar(); updateStats();
+    $('empty-hint').style.display = hosts.length ? 'none' : 'flex';
+    if (hosts.length) setTarget(hosts[0].ip);
+  }
+  function setTarget(ip) {
+    targetIp = ip; const h = hostByIp(ip);
+    if (h) targetAz = frontAz(h);
+    $('s-target').textContent = h ? (h.hostname || h.ip) : '— NONE —';
+    document.querySelectorAll('.host-row').forEach(r =>
+      r.classList.toggle('host-row--target', r.dataset.ip === ip));
+    renderDetail(h);
+  }
+  function updateStats() {
+    const ports = hosts.reduce((n,h)=>n+h.ports.length,0);
+    const svcs = new Set(hosts.flatMap(h=>h.ports.map(p=>p.service)));
+    $('s-hosts').textContent = hosts.length;
+    $('s-ports').textContent = ports;
+    $('s-svcs').textContent = svcs.size;
+  }
+  function renderSidebar() {
+    const el = $('host-list'); el.innerHTML = '';
+    hosts.forEach(h => { const row = document.createElement('div');
+      row.className = 'host-row' + (h.ip===targetIp?' host-row--target':''); row.dataset.ip = h.ip;
+      row.innerHTML = `<div><div class="host-row__ip">${h.ip}</div>
+        <div class="host-row__name">${h.hostname||'—'}</div></div>
+        <div class="host-row__ports">${h.ports.length} ports</div>`;
+      row.addEventListener('click', () => setTarget(h.ip));
+      el.appendChild(row); });
+  }
+  function renderDetail(h) {
+    const sec = $('detail-sec'), d = $('detail');
+    if (!h) { sec.style.display='none'; return; }
+    sec.style.display='block';
+    const tags = h.ports.sort((a,b)=>a.port-b.port).map(p =>
+      `<span class="port-tag ${portClass(p.port)}"><span class="pnum">${p.port}</span>
+       <span class="psvc">${p.service}${p.version?' · '+p.version:''}</span></span>`).join('');
+    d.innerHTML = `<div class="dt-ip">${h.ip}</div>
+      <div class="dt-name">${h.hostname||'(no hostname)'}${h.os?' · '+h.os:''}</div>
+      <div>${tags}</div>`;
+  }
+
+  $('btn-ingest').addEventListener('click', () => {
+    const parsed = parseNmap($('ingest').value);
+    if (!parsed.length) { $('ingest').value = '// no hosts found — is this normal nmap output?\n' + $('ingest').value; return; }
+    setHosts(parsed);
+  });
+  $('btn-sample').addEventListener('click', () => { $('ingest').value = SAMPLE; setHosts(parseNmap(SAMPLE)); });
+  $('btn-clear').addEventListener('click', () => { $('ingest').value=''; setHosts([]); $('detail-sec').style.display='none'; });
+  </script>
+</body>
+</html>

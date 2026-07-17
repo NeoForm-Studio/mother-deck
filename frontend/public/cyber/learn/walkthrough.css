@@ -1,0 +1,187 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   WALKTHROUGH ENGINE — spotlight tour styling (MOTHER theme).
+   All classes namespaced .wt- so they can't collide with the deck.
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  --wt-phos: #33ff33;
+  --wt-phos-br: #85ff85;
+  --wt-amber: #e8a63a;
+  --wt-holo: #00c8ff;
+  --wt-bg: #071007;
+  --wt-scrim: rgba(3, 6, 3, 0.80);
+  --wt-font: 'Courier New', 'Lucida Console', monospace;
+}
+
+/* Click blocker — sits over the whole deck while the tour runs */
+.wt-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: transparent;
+  cursor: default;
+}
+
+/* Spotlight — a box over the target whose giant box-shadow dims everything else */
+.wt-spot {
+  position: fixed;
+  z-index: 4001;
+  border-radius: 6px;
+  border: 1.5px solid var(--wt-holo);
+  box-shadow:
+    0 0 0 9999px var(--wt-scrim),
+    0 0 10px rgba(0, 200, 255, 0.6),
+    inset 0 0 12px rgba(0, 200, 255, 0.25);
+  pointer-events: none;
+  transition: top 0.28s ease, left 0.28s ease, width 0.28s ease, height 0.28s ease;
+}
+.wt-spot::before,
+.wt-spot::after {
+  content: '';
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--wt-holo);
+}
+.wt-spot::before { top: -3px; left: -3px; border-right: none; border-bottom: none; }
+.wt-spot::after  { bottom: -3px; right: -3px; border-left: none; border-top: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wt-spot { transition: none; }
+}
+
+/* Callout — the explanatory box */
+.wt-callout {
+  position: fixed;
+  z-index: 4002;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  background: var(--wt-bg);
+  border: 1px solid rgba(51, 255, 51, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 8px 30px rgba(0, 0, 0, 0.6),
+    0 0 14px rgba(51, 255, 51, 0.15);
+  font-family: var(--wt-font);
+  color: var(--wt-phos);
+  padding: 0;
+  pointer-events: auto;
+}
+
+/* little pointer triangle */
+.wt-callout__arrow {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: var(--wt-bg);
+  border: 1px solid rgba(51, 255, 51, 0.35);
+  transform: rotate(45deg);
+}
+
+.wt-callout__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid rgba(51, 255, 51, 0.14);
+}
+.wt-callout__dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--wt-holo);
+  box-shadow: 0 0 6px rgba(0, 200, 255, 0.7);
+  flex: 0 0 auto;
+}
+.wt-callout__title {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  color: var(--wt-amber);
+  text-shadow: 0 0 6px rgba(232, 166, 58, 0.4);
+  text-transform: uppercase;
+}
+.wt-callout__count {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: rgba(133, 255, 133, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.wt-callout__body {
+  padding: 12px;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: rgba(200, 255, 200, 0.92);
+  letter-spacing: 0.01em;
+}
+
+.wt-callout__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border-top: 1px solid rgba(51, 255, 51, 0.14);
+}
+.wt-btn {
+  background: transparent;
+  border: 1px solid rgba(51, 255, 51, 0.35);
+  color: var(--wt-phos);
+  font-family: var(--wt-font);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  padding: 6px 13px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 120ms ease;
+}
+.wt-btn:hover { background: rgba(51, 255, 51, 0.1); box-shadow: 0 0 8px rgba(51, 255, 51, 0.3); }
+.wt-btn:focus-visible { outline: 2px solid var(--wt-holo); outline-offset: 2px; }
+.wt-btn--next { border-color: var(--wt-holo); color: var(--wt-holo); }
+.wt-btn--next:hover { background: rgba(0, 200, 255, 0.12); box-shadow: 0 0 8px rgba(0, 200, 255, 0.35); }
+.wt-btn--exit { margin-left: auto; border-color: rgba(232, 166, 58, 0.4); color: var(--wt-amber); }
+.wt-btn[disabled] { opacity: 0.3; cursor: not-allowed; }
+
+/* Progress dots */
+.wt-dots { display: flex; gap: 4px; align-items: center; }
+.wt-dots i {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: rgba(51, 255, 51, 0.25);
+  display: block;
+}
+.wt-dots i.on { background: var(--wt-holo); box-shadow: 0 0 5px rgba(0, 200, 255, 0.6); }
+
+/* Launch button (added to the deck header) */
+#wt-launch {
+  background: transparent;
+  border: 1px solid rgba(232, 166, 58, 0.45);
+  color: var(--wt-amber);
+  font-family: var(--wt-font);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  padding: 6px 12px;
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 120ms ease;
+  white-space: nowrap;
+}
+#wt-launch:hover {
+  background: rgba(232, 166, 58, 0.12);
+  box-shadow: 0 0 8px rgba(232, 166, 58, 0.35);
+  color: var(--wt-phos-br);
+}
+
+/* Launcher menu */
+.wt-menu {
+  position: fixed; z-index: 4100;
+  background: var(--wt-bg);
+  border: 1px solid rgba(51, 255, 51, 0.35);
+  box-shadow: 0 8px 30px rgba(0,0,0,0.6), 0 0 14px rgba(51,255,51,0.15);
+  min-width: 230px; padding: 6px;
+  font-family: var(--wt-font);
+}
+.wt-menu__title {
+  font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase;
+  color: rgba(133,255,133,0.5); padding: 6px 9px 8px;
+}
+.wt-menu__item {
+  display: block; width: 100%; text-align: left; background: transparent; border: none;
+  color: var(--wt-phos); font-family: var(--wt-font); font-size: 11px; letter-spacing: 0.08em;
+  padding: 7px 10px; cursor: pointer; text-transform: uppercase; transition: all 120ms ease;
+}
+.wt-menu__item:hover { background: rgba(0,200,255,0.1); color: var(--wt-holo); }

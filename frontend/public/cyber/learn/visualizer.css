@@ -1,0 +1,36 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   CONCEPT VISUALISER (Phase B) — bottom-center readout panel.
+   ═══════════════════════════════════════════════════════════════════════ */
+.viz-panel {
+  position: fixed; left: 50%; bottom: 46px; transform: translate(-50%, 24px);
+  z-index: 4550; width: 680px; max-width: calc(100vw - 24px);
+  background: rgba(3,8,6,0.94); border: 1px solid rgba(0,200,255,0.35);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.6), 0 0 18px rgba(0,200,255,0.12);
+  font-family: 'Courier New', monospace;
+  opacity: 0; pointer-events: none; transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.viz-panel--on { opacity: 1; transform: translate(-50%, 0); }
+.viz-head {
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px;
+  border-bottom: 1px solid rgba(0,200,255,0.14);
+  font-size: 9px; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(0,200,255,0.7);
+}
+.viz-head__dot { width: 6px; height: 6px; border-radius: 50%; background: #00c8ff; box-shadow: 0 0 6px #00c8ff; animation: viz-blink 1.2s ease-in-out infinite; }
+@keyframes viz-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+.viz-caption {
+  padding: 8px 12px 2px; font-size: 12px; letter-spacing: 0.03em; color: #e8a63a;
+  text-shadow: 0 0 6px rgba(232,166,58,0.3); min-height: 16px;
+}
+.viz-canvas { display: block; margin: 0 auto 6px; }
+@media (prefers-reduced-motion: reduce) { .viz-panel { transition: opacity 0.2s; } }
+
+/* Tech / Holo lens toggle */
+.viz-head { justify-content: space-between; }
+.viz-lens { display: flex; gap: 3px; }
+.viz-lens__btn {
+  background: transparent; border: 1px solid rgba(0,200,255,0.3); color: rgba(0,200,255,0.6);
+  font-family: 'Courier New', monospace; font-size: 8px; letter-spacing: 0.1em; padding: 2px 8px;
+  cursor: pointer; text-transform: uppercase; transition: all 120ms ease;
+}
+.viz-lens__btn:hover { color: #85f0ff; }
+.viz-lens__btn--on { color: #021018; background: #00c8ff; border-color: #00c8ff; font-weight: bold; }

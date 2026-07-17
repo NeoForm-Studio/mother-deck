@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — PASSIVE RECON</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     PASSIVE RECON — SYS.13 — OSINT aggregator. Orchestrates Kali
+     tools (crt.sh, theHarvester, subfinder, amass, shodan), normalizes
+     into one asset schema, correlates, feeds the Loot Vault.
+     Module-specific styling only; core theme comes from mother.css.
+     ═══════════════════════════════════════════════════════════════ */
+  .pr-main { display:flex; flex-direction:column; min-height:0; }
+
+  /* target row */
+  .target-row { display:flex; gap:6px; }
+  .target-row input { flex:1; font-size:13px; letter-spacing:0.04em; }
+
+  /* source cards */
+  .src-list { display:flex; flex-direction:column; gap:6px; }
+  .src-card { display:flex; align-items:center; gap:8px; padding:7px 9px;
+    border:1px solid var(--border-dim); background:rgba(51,255,51,0.02); cursor:pointer;
+    transition:all 120ms ease; user-select:none; }
+  .src-card:hover { border-color:var(--border); background:rgba(51,255,51,0.05); }
+  .src-card.off { opacity:0.4; }
+  .src-card input { margin:0; accent-color:var(--phos); }
+  .src-card .sc-name { flex:1; font-size:11px; letter-spacing:0.06em; color:var(--phos-br); }
+  .src-card .sc-note { font-size:8.5px; color:var(--amber); letter-spacing:0.04em; }
+  .src-dot { width:8px; height:8px; border-radius:50%; background:var(--phos-dim); flex:0 0 auto;
+    box-shadow:0 0 4px currentColor; }
+  .src-dot.run { background:var(--amber); color:var(--amber); animation:pulse 1s ease-in-out infinite; }
+  .src-dot.ok  { background:var(--phos); color:var(--phos); }
+  .src-dot.skip{ background:var(--phos-ghost); color:var(--phos-ghost); }
+  .src-dot.err { background:var(--alert); color:var(--alert); }
+  .sc-count { font-size:10px; color:var(--phos-dim); min-width:20px; text-align:right; font-variant-numeric:tabular-nums; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+  /* stage ribbon */
+  .stages { display:flex; gap:0; margin-bottom:2px; }
+  .stage { flex:1; text-align:center; font-size:9px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--phos-dim); padding:6px 4px; border-bottom:2px solid var(--border-dim); transition:all 200ms ease; }
+  .stage.active { color:var(--bg); background:var(--phos); border-color:var(--phos); font-weight:bold; }
+  .stage.done { color:var(--phos-br); border-color:var(--phos); }
+
+  /* tabs (reused look) */
+  .tabs { display:flex; gap:0; border-bottom:1px solid var(--border); position:sticky; top:0;
+    background:var(--bg-deep); z-index:5; padding:8px 14px 0; flex-wrap:wrap; }
+  .tab { background:transparent; border:1px solid var(--border-dim); border-bottom:none;
+    color:var(--phos-dim); font-family:var(--font); font-size:10px; letter-spacing:0.1em;
+    padding:7px 12px; cursor:pointer; text-transform:uppercase; transition:all 120ms ease; margin-right:4px; }
+  .tab:hover { color:var(--phos); }
+  .tab--active { color:var(--bg); background:var(--phos); border-color:var(--phos); font-weight:bold; box-shadow:var(--glow); }
+  .tab .badge { margin-left:6px; font-size:9px; opacity:0.85; }
+
+  .tabpanel-wrap { padding:12px 14px; overflow:auto; min-height:0; }
+
+  table.assets { width:100%; border-collapse:collapse; }
+  table.assets th { text-align:left; font-size:9px; letter-spacing:0.16em; color:var(--phos-dim);
+    text-transform:uppercase; padding:6px 8px; border-bottom:1px solid var(--border); font-weight:normal; }
+  table.assets td { padding:6px 8px; border-bottom:1px solid var(--border-dim); font-size:11px; vertical-align:top; }
+  table.assets tr:hover td { background:rgba(51,255,51,0.04); }
+  td.host { color:var(--phos-br); word-break:break-all; }
+  td.ips { color:var(--holo); font-variant-numeric:tabular-nums; }
+  td.email { color:var(--amber); word-break:break-all; }
+  .srctag { display:inline-block; font-size:8px; letter-spacing:0.05em; text-transform:uppercase;
+    color:var(--phos-dim); border:1px solid var(--border-dim); padding:1px 5px; margin:1px 3px 1px 0; border-radius:2px; }
+  .empty { color:var(--phos-dim); font-size:11px; padding:24px 8px; text-align:center; letter-spacing:0.06em; }
+
+  /* live collect feed */
+  .feed { font-size:10px; line-height:1.7; color:var(--phos-dim); max-height:120px; overflow:auto;
+    border:1px solid var(--border-dim); background:var(--bg); padding:8px 10px; }
+  .feed .fl { white-space:pre-wrap; }
+  .feed .fl b { color:var(--phos-br); }
+  .feed .fl.err b { color:var(--alert); }
+
+  #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--bg-panel); border:1px solid var(--phos); color:var(--phos-br);
+    padding:10px 18px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase;
+    box-shadow:var(--glow-lg); z-index:120; opacity:0; pointer-events:none; transition:all 240ms ease; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">PASSIVE RECON<small>MOTHER · SYS.13 · OSINT AGGREGATOR</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Assets<b id="s-assets">0</b></div>
+      <div class="m-stat">IPs<b id="s-ips">0</b></div>
+      <div class="m-stat">Emails<b id="s-emails">0</b></div>
+      <div class="m-stat">Sources<b id="s-sources">0</b></div>
+    </div>
+    <div class="m-haz"></div>
+  </header>
+
+  <div class="m-body split-2">
+    <main class="pane pr-main">
+      <div class="stages">
+        <div class="stage" id="st-collect">1 · Collect</div>
+        <div class="stage" id="st-normalize">2 · Normalize</div>
+        <div class="stage" id="st-correlate">3 · Correlate</div>
+      </div>
+      <div class="tabs" id="tabs"></div>
+      <div class="tabpanel-wrap" id="panel">
+        <div class="empty">Set a target and run a passive sweep — nothing here touches the target directly.</div>
+      </div>
+    </main>
+
+    <aside class="pane pane--panel">
+      <div class="sec">
+        <div class="sec__title bracket">TARGET</div>
+        <div class="target-row">
+          <input id="target" value="" placeholder="example.com" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="btn-row" style="margin-top:8px;">
+          <button class="btn btn--go" id="btn-run">▶ RUN PASSIVE SWEEP</button>
+        </div>
+        <div style="font-size:8.5px;color:var(--phos-dim);letter-spacing:0.04em;margin-top:6px;line-height:1.5;">
+          Passive / read-only. Sources are queried <b>about</b> the target — no packets are sent to it.
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec__title bracket">SOURCES</div>
+        <div class="src-list" id="src-list"></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec__title bracket">COLLECT FEED</div>
+        <div class="feed" id="feed"><div class="fl">idle.</div></div>
+      </div>
+
+      <div class="sec">
+        <div class="sec__title bracket">CORRELATED LOOT</div>
+        <div class="export-box" style="display:flex;flex-direction:column;gap:6px;">
+          <button class="btn btn--holo" id="btn-loot">→ SEND TO LOOT VAULT</button>
+          <button class="btn btn--ghost" id="btn-export">EXPORT RESULT → JSON</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const LOOT_KEY = 'mother.lv.loot.v1';
+
+  const SOURCES = [
+    { id:'crtsh',        name:'crt.sh',       hint:'cert-transparency subdomains' },
+    { id:'theharvester', name:'theHarvester', hint:'emails · hosts · subdomains' },
+    { id:'subfinder',    name:'subfinder',    hint:'passive subdomains' },
+    { id:'amass',        name:'amass',        hint:'passive subdomains · IPs' },
+    { id:'shodan',       name:'shodan',       hint:'domain DB (needs membership)' },
+    { id:'dns',          name:'DNS resolve',  hint:'hosts → IPs · local · passive', always:true },
+  ];
+
+  let result = null;          // last { domain, assets, ips, emails, summary }
+  let running = false;
+  let activeTab = 'assets';
+
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); setTimeout(() => t.classList.remove('show'), 2200); }
+  function esc(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c])); }
+  function tags(arr) { return (arr || []).map((s) => `<span class="srctag">${esc(s)}</span>`).join(''); }
+
+  // ── source cards ─────────────────────────────────────────────────
+  function renderSources(status) {
+    const avail = status?.sources || {};
+    const hasKey = status?.shodanKey;
+    $('src-list').innerHTML = SOURCES.map((s) => {
+      const ok = avail[s.id] !== false;
+      const noKey = s.id === 'shodan' && !hasKey;
+      const note = s.always ? 'always on' : (noKey ? 'no api key' : (ok ? '' : 'not installed'));
+      const disabled = s.always || !ok;
+      return `<label class="src-card ${ok ? '' : 'off'}" data-src="${s.id}">
+        <input type="checkbox" ${ok ? 'checked' : ''} ${disabled ? 'disabled' : ''} data-cb="${s.id}">
+        <span class="sc-name">${esc(s.name)}<br><span style="font-size:8px;color:var(--phos-dim)">${esc(s.hint)}</span></span>
+        ${note ? `<span class="sc-note">${note}</span>` : ''}
+        <span class="src-dot" id="dot-${s.id}"></span>
+        <span class="sc-count" id="cnt-${s.id}"></span>
+      </label>`;
+    }).join('');
+  }
+  function selectedSources() {
+    return [...document.querySelectorAll('[data-cb]')].filter((c) => c.checked && !c.disabled).map((c) => c.dataset.cb);
+  }
+
+  // ── collect feed ─────────────────────────────────────────────────
+  function feed(html, cls) { const f = $('feed'); if (f.children.length === 1 && f.textContent === 'idle.') f.innerHTML = '';
+    const d = document.createElement('div'); d.className = 'fl' + (cls ? ' ' + cls : ''); d.innerHTML = html; f.appendChild(d); f.scrollTop = f.scrollHeight; }
+  function setDot(id, cls) { const d = $('dot-' + id); if (d) d.className = 'src-dot ' + (cls || ''); }
+  function setCnt(id, n) { const c = $('cnt-' + id); if (c) c.textContent = (n == null ? '' : n); }
+  function setStage(id, cls) { const e = $(id); if (e) e.className = 'stage ' + (cls || ''); }
+
+  // ── the run ──────────────────────────────────────────────────────
+  async function run() {
+    if (running) return;
+    const domain = $('target').value.trim().toLowerCase();
+    if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(domain)) { toast('enter a valid domain'); return; }
+    const sources = selectedSources();
+    if (!sources.length) { toast('select at least one source'); return; }
+
+    running = true; $('btn-run').textContent = '… SWEEPING'; $('btn-run').disabled = true;
+    $('feed').innerHTML = ''; result = null;
+    SOURCES.forEach((s) => { setDot(s.id, ''); setCnt(s.id, null); });
+    setStage('st-collect', 'active'); setStage('st-normalize', ''); setStage('st-correlate', '');
+    feed(`▸ target <b>${esc(domain)}</b> — ${sources.length} source(s)`);
+
+    try {
+      const res = await fetch('/api/recon/passive', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain, sources }),
+      });
+      if (!res.ok) { const t = await res.text(); throw new Error(t || ('HTTP ' + res.status)); }
+      const reader = res.body.getReader(); const dec = new TextDecoder(); let buf = '';
+      while (true) {
+        const { value, done } = await reader.read(); if (done) break;
+        buf += dec.decode(value, { stream: true });
+        let i; while ((i = buf.indexOf('\n')) >= 0) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line.trim()) handleEvent(JSON.parse(line)); }
+      }
+    } catch (e) {
+      feed(`✕ sweep failed: <b>${esc(e.message)}</b>`, 'err'); toast('sweep failed');
+    } finally {
+      running = false; $('btn-run').textContent = '▶ RUN PASSIVE SWEEP'; $('btn-run').disabled = false;
+    }
+  }
+
+  function handleEvent(ev) {
+    if (ev.type === 'source') {
+      if (ev.status === 'running') { setDot(ev.source, 'run'); feed(`▹ ${esc(ev.label)} — running…`); }
+      else if (ev.status === 'done') {
+        setDot(ev.source, 'ok'); setCnt(ev.source, ev.count);
+        const b = ev.breakdown || {};
+        const bits = [b.subdomains ? b.subdomains + ' subs' : '', b.ips ? b.ips + ' ips' : '', b.emails ? b.emails + ' emails' : ''].filter(Boolean).join(' · ');
+        feed(`✓ <b>${esc(ev.label)}</b> — ${ev.count} record(s)${bits ? ' (' + bits + ')' : ''}`);
+      }
+      else if (ev.status === 'skipped') { setDot(ev.source, 'skip'); feed(`— ${esc(ev.label)} skipped: ${esc(ev.message || '')}`); }
+      else if (ev.status === 'error') { setDot(ev.source, 'err'); feed(`✕ ${esc(ev.label)} error: ${esc(ev.message || '')}`, 'err'); }
+    } else if (ev.type === 'complete') {
+      setStage('st-collect', 'done'); setStage('st-normalize', 'done'); setStage('st-correlate', 'active');
+      result = ev;
+      $('s-assets').textContent = ev.summary.assets;
+      $('s-ips').textContent = ev.summary.ips;
+      $('s-emails').textContent = ev.summary.emails;
+      $('s-sources').textContent = selectedSources().length;
+      feed(`◈ correlated → <b>${ev.summary.assets}</b> assets · ${ev.summary.ips} IPs · ${ev.summary.emails} emails`);
+      renderTabs(); renderPanel();
+      toast(`${ev.summary.assets} assets correlated`);
+    }
+  }
+
+  // ── results tabs ─────────────────────────────────────────────────
+  function renderTabs() {
+    if (!result) return;
+    const defs = [
+      { id:'assets', label:'ASSETS', n: result.assets.length },
+      { id:'ips',    label:'IP ADDRESSES', n: result.ips.length },
+      { id:'emails', label:'EMAILS', n: result.emails.length },
+    ];
+    $('tabs').innerHTML = defs.map((d) =>
+      `<button class="tab ${d.id === activeTab ? 'tab--active' : ''}" data-tab="${d.id}">${d.label}<span class="badge">${d.n}</span></button>`).join('');
+  }
+  function renderPanel() {
+    if (!result) return;
+    const p = $('panel');
+    if (activeTab === 'assets') {
+      if (!result.assets.length) { p.innerHTML = `<div class="empty">No subdomains found.</div>`; return; }
+      p.innerHTML = `<table class="assets"><thead><tr><th>Host</th><th>Resolved IP(s)</th><th>Seen by</th></tr></thead><tbody>${
+        result.assets.map((a) => `<tr><td class="host">${esc(a.host)}</td><td class="ips">${a.ips.map(esc).join('<br>') || '<span style="color:var(--phos-dim)">—</span>'}</td><td>${tags(a.sources)}</td></tr>`).join('')
+      }</tbody></table>`;
+    } else if (activeTab === 'ips') {
+      if (!result.ips.length) { p.innerHTML = `<div class="empty">No IPs surfaced by passive sources.</div>`; return; }
+      p.innerHTML = `<table class="assets"><thead><tr><th>IP</th><th>Linked host(s)</th><th>Seen by</th></tr></thead><tbody>${
+        result.ips.map((e) => `<tr><td class="ips">${esc(e.ip)}</td><td class="host">${e.hosts.map(esc).join('<br>') || '<span style="color:var(--phos-dim)">—</span>'}</td><td>${tags(e.sources)}</td></tr>`).join('')
+      }</tbody></table>`;
+    } else {
+      if (!result.emails.length) { p.innerHTML = `<div class="empty">No emails found.</div>`; return; }
+      p.innerHTML = `<table class="assets"><thead><tr><th>Email</th><th>Seen by</th></tr></thead><tbody>${
+        result.emails.map((e) => `<tr><td class="email">${esc(e.value)}</td><td>${tags(e.sources)}</td></tr>`).join('')
+      }</tbody></table>`;
+    }
+  }
+
+  // ── send correlated result to the Loot Vault (same-origin localStorage) ──
+  function emptyLoot() { return { creds:[], hashes:[], hosts:[], urls:[], emails:[] }; }
+  function sendToLoot() {
+    if (!result || (!result.assets.length && !result.ips.length && !result.emails.length)) { toast('nothing to send — run a sweep first'); return; }
+    let loot; try { loot = JSON.parse(localStorage.getItem(LOOT_KEY)) || emptyLoot(); } catch { loot = emptyLoot(); }
+    for (const k of ['hosts','emails']) if (!Array.isArray(loot[k])) loot[k] = [];
+    const seenHost = new Set(loot.hosts.map((r) => r.value));
+    const seenMail = new Set(loot.emails.map((r) => r.value));
+    let added = 0;
+    for (const a of result.assets) if (!seenHost.has(a.host)) { seenHost.add(a.host); loot.hosts.push({ value: a.host, note: a.ips.join(', '), source: 'osint' }); added++; }
+    for (const e of result.ips) if (!seenHost.has(e.ip)) { seenHost.add(e.ip); loot.hosts.push({ value: e.ip, note: e.hosts.join(', '), source: 'osint' }); added++; }
+    for (const e of result.emails) if (!seenMail.has(e.value)) { seenMail.add(e.value); loot.emails.push({ value: e.value, source: 'osint' }); added++; }
+    localStorage.setItem(LOOT_KEY, JSON.stringify(loot));
+    toast(added ? `${added} item(s) → Loot Vault` : 'already in Loot Vault');
+  }
+
+  function exportJson() {
+    if (!result) { toast('run a sweep first'); return; }
+    const blob = new Blob([JSON.stringify(result, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `passive-recon-${result.domain}.json`; a.click(); URL.revokeObjectURL(a.href);
+  }
+
+  // ── wire ─────────────────────────────────────────────────────────
+  $('btn-run').addEventListener('click', run);
+  $('target').addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+  $('btn-loot').addEventListener('click', sendToLoot);
+  $('btn-export').addEventListener('click', exportJson);
+  $('tabs').addEventListener('click', (e) => { const b = e.target.closest('.tab'); if (!b) return; activeTab = b.dataset.tab; renderTabs(); renderPanel(); });
+  document.getElementById('src-list').addEventListener('click', (e) => {
+    // let the checkbox toggle drive the .off styling
+    setTimeout(() => document.querySelectorAll('.src-card').forEach((c) => {
+      const cb = c.querySelector('input'); c.classList.toggle('off', !cb.checked && !cb.disabled ? true : cb.disabled ? true : false);
+    }), 0);
+  });
+
+  // boot: probe availability
+  renderSources(null);
+  fetch('/api/recon/status').then((r) => r.json()).then(renderSources).catch(() => {});
+  </script>
+</body>
+</html>

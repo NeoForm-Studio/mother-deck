@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — KILL CHAIN</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     KILL CHAIN — MITRE ATT&CK attack-path tracker. SYS.08.
+     Horizontally-scrolling tactic columns of technique chips.
+     Click a chip → toggles USED (lights holo). Used set = the
+     attack path, echoed in the KILL CHAIN PATH strip and export.
+     Module-specific CSS only; theme from mother.css.
+     ═══════════════════════════════════════════════════════════════ */
+  .kc-body { grid-template-rows:auto 1fr; }
+
+  /* ── Path strip ── */
+  .path-strip { border-bottom:1px solid var(--border); background:var(--bg-panel);
+    padding:8px 14px; display:flex; align-items:center; gap:10px; min-height:54px; }
+  .path-strip__label { font-size:9px; letter-spacing:0.2em; color:var(--phos-dim);
+    text-transform:uppercase; white-space:nowrap; flex-shrink:0; }
+  .path-flow { display:flex; align-items:center; gap:6px; overflow-x:auto; flex:1;
+    padding-bottom:2px; }
+  .path-node { display:inline-flex; flex-direction:column; border:1px solid rgba(0,200,255,0.4);
+    background:rgba(0,200,255,0.06); color:var(--holo); padding:3px 9px; white-space:nowrap;
+    flex-shrink:0; box-shadow:0 0 8px rgba(0,200,255,0.15); }
+  .path-node .pn-id { font-size:10px; letter-spacing:0.05em; text-shadow:0 0 5px rgba(0,200,255,0.4); }
+  .path-node .pn-tac { font-size:7px; letter-spacing:0.1em; color:var(--holo-dim); text-transform:uppercase; }
+  .path-arrow { color:var(--phos-dim); font-size:13px; flex-shrink:0; }
+  .path-empty { font-size:10px; color:var(--phos-dim); letter-spacing:0.1em; }
+
+  /* ── Columns ── */
+  .kc-scroll { overflow-x:auto; overflow-y:hidden; }
+  .kc-cols { display:flex; height:100%; min-width:min-content; }
+  .kc-col { width:190px; flex-shrink:0; border-right:1px solid var(--border-dim);
+    display:flex; flex-direction:column; min-height:0; }
+  .kc-col__head { padding:9px 10px 8px; border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,rgba(51,255,51,0.05),transparent); position:sticky; top:0; }
+  .kc-col__idx { font-size:8px; color:var(--phos-ghost); letter-spacing:0.15em; }
+  .kc-col__name { font-size:9.5px; letter-spacing:0.1em; color:var(--phos-br); text-transform:uppercase;
+    line-height:1.25; margin-top:1px; min-height:22px; }
+  .kc-col__count { font-size:8px; letter-spacing:0.12em; color:var(--phos-dim); margin-top:4px; }
+  .kc-col__count b { color:var(--holo); }
+  .kc-col__list { flex:1; overflow-y:auto; padding:7px 8px; display:flex; flex-direction:column; gap:6px; }
+
+  /* ── Technique chips ── */
+  .tech { border:1px solid var(--border-dim); background:var(--bg-input); padding:6px 8px;
+    cursor:pointer; transition:all 120ms ease; position:relative; }
+  .tech:hover { border-color:var(--phos-dim); box-shadow:var(--glow); }
+  .tech__id { font-size:10px; color:var(--phos-dim); letter-spacing:0.05em; }
+  .tech__name { font-size:9px; color:var(--phos-dim); line-height:1.3; margin-top:2px; text-transform:uppercase; }
+  .tech--used { border-color:rgba(0,200,255,0.5); background:rgba(0,200,255,0.08);
+    box-shadow:0 0 10px rgba(0,200,255,0.2); }
+  .tech--used .tech__id { color:var(--holo); text-shadow:0 0 5px rgba(0,200,255,0.5); }
+  .tech--used .tech__name { color:var(--phos-br); }
+  .tech--used::after { content:'●'; position:absolute; top:5px; right:7px; font-size:8px; color:var(--holo);
+    text-shadow:0 0 6px rgba(0,200,255,0.7); }
+
+  /* ── Modal ── */
+  .modal { position:fixed; inset:0; z-index:100; background:rgba(2,4,2,0.8);
+    display:flex; align-items:center; justify-content:center; padding:24px; }
+  .modal__box { width:min(680px,100%); max-height:86vh; background:var(--bg-panel);
+    border:1px solid var(--border); box-shadow:var(--glow-lg); display:flex; flex-direction:column; }
+  .modal__head { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--border); }
+  .modal__title { font-size:11px; letter-spacing:0.2em; color:var(--phos-br); text-shadow:var(--glow);
+    text-transform:uppercase; flex:1; }
+  .modal__body { overflow:auto; padding:0; }
+  .modal .code { border:none; margin:0; max-height:64vh; overflow:auto; font-size:11px; line-height:1.5; }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">KILL CHAIN<small>MOTHER · SYS.08 · MITRE ATT&amp;CK PATH TRACKER</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Techniques Used<b id="s-used">0</b></div>
+      <div class="m-stat">Tactics Touched<b id="s-tactics">0</b></div>
+      <div class="m-stat">Path Length<b id="s-len">0</b></div>
+    </div>
+    <div class="m-haz"></div>
+    <div class="btn-row">
+      <button class="btn btn--holo" id="btn-export">⎙ EXPORT REPORT</button>
+      <button class="btn btn--alert" id="btn-reset">RESET PATH</button>
+    </div>
+  </header>
+
+  <div class="m-body kc-body">
+    <div class="path-strip">
+      <div class="path-strip__label">◤ KILL CHAIN PATH ◥</div>
+      <div class="path-flow" id="path-flow"></div>
+    </div>
+
+    <div class="kc-scroll pane">
+      <div class="kc-cols" id="kc-cols"></div>
+    </div>
+  </div>
+
+  <div class="modal hidden" id="modal">
+    <div class="modal__box">
+      <div class="modal__head">
+        <div class="modal__title">◤ ATTACK-PATH REPORT · MARKDOWN ◥</div>
+        <button class="copy-btn" id="btn-copy">COPY</button>
+        <button class="btn btn--ghost" id="btn-close">CLOSE</button>
+      </div>
+      <div class="modal__body">
+        <pre class="code" id="report-out"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const LS_KEY = 'mother.killchain.used.v1';
+
+  /* ── MITRE ATT&CK tactics + real technique catalog ───────────── */
+  const TACTICS = [
+    { id:'TA0043', name:'Reconnaissance', techs:[
+      ['T1595','Active Scanning'], ['T1592','Gather Victim Host Info'],
+      ['T1590','Gather Victim Network Info'], ['T1589','Gather Victim Identity Info'],
+      ['T1598','Phishing for Information'], ['T1596','Search Open Technical Databases'] ] },
+    { id:'TA0042', name:'Resource Dev', techs:[
+      ['T1583','Acquire Infrastructure'], ['T1586','Compromise Accounts'],
+      ['T1587','Develop Capabilities'], ['T1588','Obtain Capabilities'],
+      ['T1608','Stage Capabilities'] ] },
+    { id:'TA0001', name:'Initial Access', techs:[
+      ['T1190','Exploit Public-Facing App'], ['T1566','Phishing'],
+      ['T1078','Valid Accounts'], ['T1133','External Remote Services'],
+      ['T1195','Supply Chain Compromise'], ['T1200','Hardware Additions'] ] },
+    { id:'TA0002', name:'Execution', techs:[
+      ['T1059','Command & Scripting Interpreter'], ['T1203','Exploitation for Client Execution'],
+      ['T1053','Scheduled Task/Job'], ['T1204','User Execution'],
+      ['T1569','System Services'], ['T1047','Windows Management Instrumentation'] ] },
+    { id:'TA0003', name:'Persistence', techs:[
+      ['T1547','Boot or Logon Autostart'], ['T1136','Create Account'],
+      ['T1053','Scheduled Task/Job'], ['T1505','Server Software Component'],
+      ['T1098','Account Manipulation'], ['T1543','Create/Modify System Process'] ] },
+    { id:'TA0004', name:'Priv Esc', techs:[
+      ['T1548','Abuse Elevation Control'], ['T1068','Exploitation for Priv Esc'],
+      ['T1055','Process Injection'], ['T1053','Scheduled Task/Job'],
+      ['T1078','Valid Accounts'], ['T1134','Access Token Manipulation'] ] },
+    { id:'TA0005', name:'Defense Evasion', techs:[
+      ['T1070','Indicator Removal'], ['T1027','Obfuscated Files or Info'],
+      ['T1055','Process Injection'], ['T1562','Impair Defenses'],
+      ['T1218','System Binary Proxy Exec'], ['T1140','Deobfuscate/Decode Files'] ] },
+    { id:'TA0006', name:'Credential Access', techs:[
+      ['T1003','OS Credential Dumping'], ['T1110','Brute Force'],
+      ['T1555','Credentials from Password Stores'], ['T1558','Steal or Forge Kerberos Tickets'],
+      ['T1552','Unsecured Credentials'], ['T1056','Input Capture'] ] },
+    { id:'TA0007', name:'Discovery', techs:[
+      ['T1087','Account Discovery'], ['T1046','Network Service Discovery'],
+      ['T1082','System Information Discovery'], ['T1018','Remote System Discovery'],
+      ['T1083','File and Directory Discovery'], ['T1057','Process Discovery'] ] },
+    { id:'TA0008', name:'Lateral Movement', techs:[
+      ['T1021','Remote Services'], ['T1210','Exploitation of Remote Services'],
+      ['T1550','Use Alternate Auth Material'], ['T1534','Internal Spearphishing'],
+      ['T1570','Lateral Tool Transfer'] ] },
+    { id:'TA0009', name:'Collection', techs:[
+      ['T1560','Archive Collected Data'], ['T1005','Data from Local System'],
+      ['T1114','Email Collection'], ['T1113','Screen Capture'],
+      ['T1039','Data from Network Shared Drive'], ['T1056','Input Capture'] ] },
+    { id:'TA0011', name:'Command & Control', techs:[
+      ['T1071','Application Layer Protocol'], ['T1105','Ingress Tool Transfer'],
+      ['T1573','Encrypted Channel'], ['T1090','Proxy'],
+      ['T1572','Protocol Tunneling'], ['T1219','Remote Access Software'] ] },
+    { id:'TA0010', name:'Exfiltration', techs:[
+      ['T1041','Exfil Over C2 Channel'], ['T1048','Exfil Over Alternative Protocol'],
+      ['T1567','Exfil Over Web Service'], ['T1029','Scheduled Transfer'],
+      ['T1030','Data Transfer Size Limits'] ] },
+    { id:'TA0040', name:'Impact', techs:[
+      ['T1486','Data Encrypted for Impact'], ['T1490','Inhibit System Recovery'],
+      ['T1489','Service Stop'], ['T1485','Data Destruction'],
+      ['T1498','Network Denial of Service'], ['T1496','Resource Hijacking'] ] },
+  ];
+
+  /* Unique key per chip (same T-id can appear in multiple tactics) */
+  const chipKey = (tacId, techId) => tacId + '|' + techId;
+
+  /* Seed a few pre-selected techniques → a plausible ransomware path */
+  const SEED = [
+    chipKey('TA0043','T1595'), chipKey('TA0001','T1190'),
+    chipKey('TA0002','T1059'), chipKey('TA0004','T1548'),
+    chipKey('TA0006','T1003'), chipKey('TA0008','T1021'),
+    chipKey('TA0011','T1071'), chipKey('TA0010','T1041'),
+    chipKey('TA0040','T1486'),
+  ];
+
+  /* ── State ── */
+  let used = loadUsed();
+  function loadUsed() {
+    try { const raw = localStorage.getItem(LS_KEY);
+      if (raw) return new Set(JSON.parse(raw)); } catch (e) {}
+    return new Set(SEED);
+  }
+  function saveUsed() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify([...used])); } catch (e) {}
+  }
+
+  /* ── Build columns ── */
+  function buildColumns() {
+    const wrap = $('kc-cols'); wrap.innerHTML = '';
+    TACTICS.forEach((tac, ti) => {
+      const col = document.createElement('div');
+      col.className = 'kc-col';
+      const usedCount = tac.techs.filter(t => used.has(chipKey(tac.id, t[0]))).length;
+      col.innerHTML =
+        `<div class="kc-col__head">
+           <div class="kc-col__idx">${tac.id} · ${String(ti+1).padStart(2,'0')}/14</div>
+           <div class="kc-col__name">${tac.name}</div>
+           <div class="kc-col__count"><b data-count="${tac.id}">${usedCount}</b> / ${tac.techs.length} USED</div>
+         </div>
+         <div class="kc-col__list"></div>`;
+      const list = col.querySelector('.kc-col__list');
+      tac.techs.forEach(([tid, tname]) => {
+        const key = chipKey(tac.id, tid);
+        const chip = document.createElement('div');
+        chip.className = 'tech' + (used.has(key) ? ' tech--used' : '');
+        chip.dataset.key = key;
+        chip.innerHTML = `<div class="tech__id">${tid}</div><div class="tech__name">${tname}</div>`;
+        chip.addEventListener('click', () => toggle(key, chip, tac.id));
+        list.appendChild(chip);
+      });
+      wrap.appendChild(col);
+    });
+  }
+
+  function toggle(key, chip, tacId) {
+    if (used.has(key)) used.delete(key); else used.add(key);
+    chip.classList.toggle('tech--used', used.has(key));
+    chip.classList.add('flash');
+    setTimeout(() => chip.classList.remove('flash'), 500);
+    // refresh this column's count
+    const cnt = TACTICS.find(t => t.id === tacId).techs
+      .filter(t => used.has(chipKey(tacId, t[0]))).length;
+    const el = document.querySelector(`[data-count="${tacId}"]`);
+    if (el) el.textContent = cnt;
+    saveUsed(); updateStats(); buildPath();
+  }
+
+  function updateStats() {
+    const tacticsTouched = TACTICS.filter(tac =>
+      tac.techs.some(t => used.has(chipKey(tac.id, t[0])))).length;
+    $('s-used').textContent = used.size;
+    $('s-tactics').textContent = tacticsTouched;
+    $('s-len').textContent = pathOrdered().length;
+  }
+
+  /* Used techniques in tactic order → the attack path */
+  function pathOrdered() {
+    const path = [];
+    TACTICS.forEach(tac => tac.techs.forEach(([tid, tname]) => {
+      if (used.has(chipKey(tac.id, tid)))
+        path.push({ tid, tname, tactic: tac.name });
+    }));
+    return path;
+  }
+
+  function buildPath() {
+    const flow = $('path-flow'); flow.innerHTML = '';
+    const path = pathOrdered();
+    if (!path.length) {
+      flow.innerHTML = '<span class="path-empty">— NO TECHNIQUES SELECTED · CLICK CHIPS TO BUILD PATH —</span>';
+      return;
+    }
+    path.forEach((n, i) => {
+      const node = document.createElement('div');
+      node.className = 'path-node';
+      node.innerHTML = `<span class="pn-id">${n.tid}</span><span class="pn-tac">${n.tactic}</span>`;
+      flow.appendChild(node);
+      if (i < path.length - 1) {
+        const arr = document.createElement('span');
+        arr.className = 'path-arrow'; arr.textContent = '▸';
+        flow.appendChild(arr);
+      }
+    });
+  }
+
+  /* ── Markdown export ── */
+  function buildReport() {
+    const path = pathOrdered();
+    const tacticsTouched = TACTICS.filter(tac =>
+      tac.techs.some(t => used.has(chipKey(tac.id, t[0]))));
+    let md = '# ATTACK-PATH REPORT\n\n';
+    md += '> Generated by MOTHER · SYS.08 · KILL CHAIN\n';
+    md += '> MITRE ATT&CK Enterprise mapping\n\n';
+    md += '## Summary\n\n';
+    md += `- Techniques used: **${used.size}**\n`;
+    md += `- Tactics touched: **${tacticsTouched.length} / 14**\n`;
+    md += `- Path length: **${path.length}**\n\n`;
+    md += '## Kill Chain Path\n\n';
+    md += path.length
+      ? path.map(n => `${n.tid}`).join(' → ') + '\n\n'
+      : '_(empty)_\n\n';
+    md += '## Techniques by Tactic\n\n';
+    tacticsTouched.forEach(tac => {
+      md += `### ${tac.name} (${tac.id})\n\n`;
+      tac.techs.forEach(([tid, tname]) => {
+        if (used.has(chipKey(tac.id, tid)))
+          md += `- \`${tid}\` ${tname}\n`;
+      });
+      md += '\n';
+    });
+    if (!tacticsTouched.length) md += '_No techniques selected._\n';
+    return md;
+  }
+
+  function openModal() {
+    $('report-out').textContent = buildReport();
+    $('modal').classList.remove('hidden');
+  }
+  function closeModal() { $('modal').classList.add('hidden'); }
+
+  $('btn-export').addEventListener('click', openModal);
+  $('btn-close').addEventListener('click', closeModal);
+  $('modal').addEventListener('click', (e) => { if (e.target === $('modal')) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+  $('btn-copy').addEventListener('click', () => {
+    const txt = $('report-out').textContent;
+    navigator.clipboard.writeText(txt).then(() => {
+      const b = $('btn-copy'); b.textContent = 'COPIED ✓';
+      setTimeout(() => b.textContent = 'COPY', 1400);
+    }).catch(() => {});
+  });
+
+  $('btn-reset').addEventListener('click', () => {
+    used = new Set();
+    saveUsed(); buildColumns(); updateStats(); buildPath();
+  });
+
+  /* ── Boot ── */
+  buildColumns(); updateStats(); buildPath();
+  </script>
+</body>
+</html>

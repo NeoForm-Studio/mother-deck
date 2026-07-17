@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — LOOT VAULT</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     LOOT VAULT — SYS.07 — parse tool output into structured loot.
+     Module-specific styling only; core theme comes from mother.css.
+     ═══════════════════════════════════════════════════════════════ */
+  .lv-main { display:flex; flex-direction:column; min-height:0; }
+
+  /* left panel (ingest) */
+  #ingest { width:100%; height:180px; font-size:10px; }
+  .pane--panel .sec { display:flex; flex-direction:column; }
+  .export-box { display:flex; flex-direction:column; gap:6px; }
+
+  /* tabs */
+  .tabs { display:flex; gap:0; border-bottom:1px solid var(--border); position:sticky; top:0;
+    background:var(--bg-deep); z-index:5; padding:8px 14px 0; flex-wrap:wrap; }
+  .tab { background:transparent; border:1px solid var(--border-dim); border-bottom:none;
+    color:var(--phos-dim); font-family:var(--font); font-size:10px; letter-spacing:0.1em;
+    padding:7px 12px; cursor:pointer; text-transform:uppercase; transition:all 120ms ease;
+    margin-right:4px; }
+  .tab:hover { color:var(--phos); }
+  .tab--active { color:var(--bg); background:var(--phos); border-color:var(--phos); font-weight:bold; box-shadow:var(--glow); }
+  .tab .badge { margin-left:6px; font-size:9px; opacity:0.85; }
+
+  .tabpanel-wrap { padding:12px 14px; overflow:auto; min-height:0; }
+  .toolrow { display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
+  .toolrow .sec__title { margin-bottom:0; }
+  .spacer { flex:1; }
+
+  /* loot table */
+  table.loot { width:100%; border-collapse:collapse; }
+  table.loot th { text-align:left; font-size:9px; letter-spacing:0.16em; color:var(--phos-dim);
+    text-transform:uppercase; padding:6px 8px; border-bottom:1px solid var(--border); font-weight:normal; }
+  table.loot td { padding:6px 8px; border-bottom:1px solid var(--border-dim); font-size:11px; vertical-align:top; }
+  table.loot tr:hover td { background:rgba(51,255,51,0.04); }
+  td.val { color:var(--phos-br); word-break:break-all; font-size:11px; }
+  td.val .pw { color:var(--amber); }
+  td.val .usr { color:var(--holo); }
+  td.act { text-align:right; white-space:nowrap; }
+  td.src { white-space:nowrap; }
+
+  .add-row { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; align-items:center; }
+  .add-row input { font-size:11px; }
+  .add-row input.a-wide { flex:1; min-width:160px; }
+
+  #toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--bg-panel); border:1px solid var(--phos); color:var(--phos-br);
+    padding:10px 18px; font-size:11px; letter-spacing:0.1em; text-transform:uppercase;
+    box-shadow:var(--glow-lg); z-index:120; opacity:0; pointer-events:none; transition:all 240ms ease; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">LOOT VAULT<small>MOTHER · SYS.07 · CREDENTIAL &amp; ARTIFACT PARSER</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Creds<b id="s-creds">0</b></div>
+      <div class="m-stat">Hashes<b id="s-hashes">0</b></div>
+      <div class="m-stat">Hosts<b id="s-hosts">0</b></div>
+      <div class="m-stat">URLs<b id="s-urls">0</b></div>
+      <div class="m-stat">Emails<b id="s-emails">0</b></div>
+    </div>
+    <div class="m-haz"></div>
+  </header>
+
+  <div class="m-body split-2">
+    <main class="pane lv-main">
+      <div class="tabs" id="tabs"></div>
+      <div class="tabpanel-wrap" id="panel"></div>
+    </main>
+
+    <aside class="pane pane--panel">
+      <div class="sec">
+        <div class="sec__title bracket">INGEST OUTPUT</div>
+        <textarea id="ingest" placeholder="Paste tool output — hashdump, nmap, creds, logs…"></textarea>
+        <div class="btn-row" style="margin-top:7px;">
+          <button class="btn btn--go" id="btn-parse">▶ PARSE</button>
+          <button class="btn btn--ghost" id="btn-sample">SAMPLE</button>
+          <button class="btn btn--ghost" id="btn-clear">CLEAR</button>
+        </div>
+      </div>
+      <div class="sec">
+        <div class="sec__title bracket">EXPORT</div>
+        <div class="export-box">
+          <button class="btn btn--holo" id="btn-export-json">EXPORT ALL → JSON</button>
+          <button class="btn btn--holo" id="btn-export-csv">EXPORT SECTION → CSV</button>
+        </div>
+      </div>
+      <div class="sec">
+        <div class="sec__title bracket">PURGE</div>
+        <button class="btn btn--alert" id="btn-purge">✕ WIPE ALL LOOT</button>
+      </div>
+    </aside>
+  </div>
+
+  <div id="toast"></div>
+
+  <script>
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const KEY = 'mother.lv.loot.v1';
+
+  const CATS = [
+    { id:'creds',  label:'CREDENTIALS' },
+    { id:'hashes', label:'HASHES' },
+    { id:'hosts',  label:'HOSTS' },
+    { id:'urls',   label:'URLS' },
+    { id:'emails', label:'EMAILS' }
+  ];
+
+  /* ── Sample blob: mixed hashdump + creds + nmap + urls + emails ── */
+  const SAMPLE =
+`# ---- secretsdump.py output ----
+Administrator:500:aad3b435b51404eeaad3b435b51404ee:31d6cfe0d16ae931b73c59d7e0c089c0:::
+svc_backup:1104:aad3b435b51404eeaad3b435b51404ee:8846f7eaee8fb117ad06bdd830b7586c:::
+j.reyes:1108:aad3b435b51404eeaad3b435b51404ee:e19ccf75ee54e06b06a5907af13cef42:::
+
+# ---- /etc/shadow (partial) ----
+root:$6$rounds=5000$abcXYZ$3nJ0aQ2mDf9kL1pW8sVbT7cN4hR6eG0uZ2yX5wQ9oM3iP7lK8jH1gF4dS6aA0:19700:0:99999:7:::
+webadmin:$1$saltsalt$Fh8x0k2mNq7pLr3wZ1c9d.:19700:0:99999:7:::
+
+# ---- app config leak ----
+DB_USER=appsvc
+DB_PASSWORD=Sup3rS3cr3t!2024
+login: portaladmin  pass=Autumn2023!
+found: guest / guest123
+
+# ---- mysql user hash ----
+report_ro:*B7A9E3F1C4D82056EF10A9BC3D7248E5FA61B0C2
+
+# ---- bcrypt from web db ----
+$2b$12$KIXQe5uJ8rQF7mN0oPqRauB1cJ2dE3fG4hI5jK6lM7nO8pQ9rS0uW
+
+# ---- nmap -sV 10.10.14.0/24 ----
+Nmap scan report for gw.corp.local (10.10.14.1)
+22/tcp   open  ssh
+80/tcp   open  http
+Nmap scan report for dc01.corp.local (10.10.14.10)
+445/tcp  open  microsoft-ds
+3389/tcp open  ms-wbt-server
+Nmap scan report for web01.corp.local (10.10.14.25:8080)
+8080/tcp open  http-proxy
+
+# ---- discovered endpoints ----
+http://web01.corp.local/admin/login.php
+https://portal.corp.local:8443/dashboard
+http://10.10.14.25:8080/api/v1/users
+
+# ---- harvested contacts ----
+j.reyes@corp.local
+it-support@corp.local
+portaladmin@corp.local`;
+
+  /* ── Empty loot shape ───────────────────────────────────────── */
+  function emptyLoot() {
+    return { creds:[], hashes:[], hosts:[], urls:[], emails:[] };
+  }
+
+  /* ── Persistence ────────────────────────────────────────────── */
+  let pendingUser = null;   // declared before load() runs the parser
+  let loot = load();
+  let activeCat = 'creds';
+  function load() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (p && typeof p === 'object') {
+          const base = emptyLoot();
+          for (const c of CATS) base[c.id] = Array.isArray(p[c.id]) ? p[c.id] : [];
+          return base;
+        }
+      }
+    } catch (e) { /* seed below */ }
+    const seeded = parse(SAMPLE, 'sample');
+    localStorage.setItem(KEY, JSON.stringify(seeded));
+    return seeded;
+  }
+  function save() { localStorage.setItem(KEY, JSON.stringify(loot)); }
+
+  /* ── HTML escape ────────────────────────────────────────────── */
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+      ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+  }
+
+  /* ── Hash type detection ────────────────────────────────────── */
+  function classifyHash(h) {
+    if (/^\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}$/.test(h)) return 'BCRYPT';
+    if (/^\$6\$/.test(h)) return 'SHA512CRYPT';
+    if (/^\$5\$/.test(h)) return 'SHA256CRYPT';
+    if (/^\$1\$/.test(h)) return 'MD5CRYPT';
+    if (/^\$DCC2\$/i.test(h) || /^\$dcc2\$/.test(h)) return 'DCC2';
+    if (/^\$krb5(tgs|asrep)?\$/i.test(h)) return 'KRB5';
+    if (/^\*[0-9A-F]{40}$/i.test(h)) return 'MYSQL41';
+    if (/^[0-9a-f]{128}$/i.test(h)) return 'SHA512';
+    if (/^[0-9a-f]{64}$/i.test(h)) return 'SHA256';
+    if (/^[0-9a-f]{40}$/i.test(h)) return 'SHA1';
+    if (/^[0-9a-f]{32}$/i.test(h)) return 'NTLM/MD5';
+    return null;
+  }
+  function hashTagClass(type) {
+    if (!type) return '';
+    if (type === 'BCRYPT' || type.indexOf('CRYPT') > -1) return 'tag--alert';
+    if (type === 'DCC2' || type === 'KRB5') return 'tag--amber';
+    if (type === 'MYSQL41') return 'tag--holo';
+    return 'tag--ok';
+  }
+
+  /* ── The parser ─────────────────────────────────────────────── */
+  function parse(text, source) {
+    const out = emptyLoot();
+    const seen = { creds:new Set(), hashes:new Set(), hosts:new Set(), urls:new Set(), emails:new Set() };
+    source = source || 'paste';
+
+    const pushUnique = (cat, value, extra) => {
+      const kdup = (cat === 'creds') ? (value.user + ':' + value.pass) : value;
+      if (seen[cat].has(kdup)) return;
+      seen[cat].add(kdup);
+      if (cat === 'creds') out.creds.push({ user:value.user, pass:value.pass, src:source });
+      else out[cat].push(Object.assign({ value, src:source }, extra || {}));
+    };
+
+    // URLs first (so their embedded hosts don't get double-claimed oddly)
+    const urlRe = /\bhttps?:\/\/[^\s"'<>()]+/gi;
+    (text.match(urlRe) || []).forEach(u => pushUnique('urls', u.replace(/[.,;]+$/, '')));
+
+    // Emails
+    const emailRe = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+    (text.match(emailRe) || []).forEach(e => pushUnique('emails', e));
+
+    // Line-oriented parsing
+    const lines = text.split(/\r?\n/);
+    for (let raw of lines) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#')) continue;
+
+      // pwdump / secretsdump:  user:rid:lm:nt:::
+      let m = line.match(/^([^\s:]+):\d+:([0-9a-fA-F]{32}):([0-9a-fA-F]{32}):::/);
+      if (m) {
+        pushUnique('hashes', m[3], { type:'NTLM/MD5', user:m[1] });
+        continue;
+      }
+
+      // shadow:  user:$hash$...:...
+      m = line.match(/^([^\s:]+):(\$[^:]+):/);
+      if (m && classifyHash(m[2])) {
+        pushUnique('hashes', m[2], { type:classifyHash(m[2]), user:m[1] });
+        continue;
+      }
+
+      // mysql:  user:*HASH
+      m = line.match(/^([^\s:]+):(\*[0-9A-Fa-f]{40})\b/);
+      if (m) {
+        pushUnique('hashes', m[2].toUpperCase(), { type:'MYSQL41', user:m[1] });
+        continue;
+      }
+
+      // bare hash on its own line
+      const bare = line.match(/^(\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}|\$[156]\$[^\s:]+|[0-9a-fA-F]{32,128}|\*[0-9A-Fa-f]{40})$/);
+      if (bare) {
+        const t = classifyHash(bare[1]);
+        if (t) { pushUnique('hashes', bare[1], { type:t }); continue; }
+      }
+
+      // KEY=VALUE credential pairs  (DB_USER / DB_PASSWORD, user=/pass=)
+      const kv = line.match(/(?:^|\b)(?:db_)?(user(?:name)?|login)\s*[=:]\s*([^\s,;]+)/i);
+      const pv = line.match(/(?:^|\b)(?:db_)?(pass(?:word)?|pwd)\s*[=:]\s*([^\s,;]+)/i);
+      // "found: user / pass"  or  "user / pass"
+      const slash = line.match(/^(?:found:\s*)?([A-Za-z0-9._-]+)\s*\/\s*([^\s/]+)$/i);
+      // "login: portaladmin  pass=Autumn2023!"  (both on one line)
+      if (kv && pv) { pushUnique('creds', { user:kv[2], pass:pv[2] }); continue; }
+      if (slash && !/https?/i.test(line)) { pushUnique('creds', { user:slash[1], pass:slash[2] }); continue; }
+      // solitary user= / pass= lines get paired via a rolling buffer
+      if (kv && !pv) { pendingUser = kv[2]; }
+      if (pv && !kv) {
+        if (pendingUser) { pushUnique('creds', { user:pendingUser, pass:pv[2] }); pendingUser = null; }
+        else pushUnique('creds', { user:'(unknown)', pass:pv[2] });
+      }
+
+      // colon creds  user:pass  (avoid hash/url/time lines)
+      const cc = /:\/\//.test(line) ? null : line.match(/^([A-Za-z0-9._-]{2,32}):([^\s:]{3,64})$/);
+      if (cc && !/^[0-9a-fA-F]+$/.test(cc[2]) && !classifyHash(cc[2]) && !/^\d+$/.test(cc[2])) {
+        pushUnique('creds', { user:cc[1], pass:cc[2] });
+      }
+    }
+
+    // Hosts: IPv4 (+ optional :port), skip inside URLs handled separately but dedupe naturally
+    const ipRe = /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?::\d{1,5})?\b/g;
+    (text.match(ipRe) || []).forEach(ip => pushUnique('hosts', ip));
+
+    return out;
+  }
+
+  /* ── Merge parsed into existing loot (dedup across sessions) ─── */
+  function mergeLoot(parsed) {
+    let added = 0;
+    for (const c of CATS) {
+      const existing = loot[c.id];
+      const keyOf = (r) => c.id === 'creds' ? (r.user + ':' + r.pass) : r.value;
+      const have = new Set(existing.map(keyOf));
+      for (const r of parsed[c.id]) {
+        if (!have.has(keyOf(r))) { existing.push(r); have.add(keyOf(r)); added++; }
+      }
+    }
+    return added;
+  }
+
+  /* ── Renderers ──────────────────────────────────────────────── */
+  function renderStats() {
+    $('s-creds').textContent = loot.creds.length;
+    $('s-hashes').textContent = loot.hashes.length;
+    $('s-hosts').textContent = loot.hosts.length;
+    $('s-urls').textContent = loot.urls.length;
+    $('s-emails').textContent = loot.emails.length;
+  }
+
+  function renderTabs() {
+    $('tabs').innerHTML = CATS.map(c =>
+      `<button class="tab ${activeCat===c.id?'tab--active':''}" data-cat="${c.id}">
+         ${c.label}<span class="badge">${loot[c.id].length}</span></button>`).join('');
+    $('tabs').querySelectorAll('.tab').forEach(b =>
+      b.addEventListener('click', () => { activeCat = b.dataset.cat; renderTabs(); renderPanel(); }));
+  }
+
+  function renderPanel() {
+    const cat = activeCat;
+    const rows = loot[cat];
+    const p = $('panel');
+    let table;
+    if (!rows.length) {
+      table = `<div class="empty"><div class="icon">◇</div>
+        <div class="big">NO ${cat.toUpperCase()} YET</div>
+        <div class="dim">PARSE tool output or ＋ ADD manually</div></div>`;
+    } else if (cat === 'creds') {
+      table = `<table class="loot"><thead><tr>
+        <th>USER</th><th>PASSWORD</th><th>SOURCE</th><th></th></tr></thead><tbody>` +
+        rows.map((r, i) => `<tr>
+          <td class="val"><span class="usr">${esc(r.user)}</span></td>
+          <td class="val"><span class="pw">${esc(r.pass)}</span></td>
+          <td class="src"><span class="tag">${esc(r.src||'?')}</span></td>
+          <td class="act">
+            <button class="copy-btn" data-copy="${esc(r.user + ':' + r.pass)}">⧉</button>
+            <button class="copy-btn" data-del="${i}">✕</button>
+          </td></tr>`).join('') + `</tbody></table>`;
+    } else if (cat === 'hashes') {
+      table = `<table class="loot"><thead><tr>
+        <th>USER</th><th>HASH</th><th>TYPE</th><th>SOURCE</th><th></th></tr></thead><tbody>` +
+        rows.map((r, i) => `<tr>
+          <td class="val"><span class="usr">${esc(r.user||'—')}</span></td>
+          <td class="val">${esc(r.value)}</td>
+          <td><span class="tag ${hashTagClass(r.type)}">${esc(r.type||'?')}</span></td>
+          <td class="src"><span class="tag">${esc(r.src||'?')}</span></td>
+          <td class="act">
+            <button class="copy-btn" data-copy="${esc(r.value)}">⧉</button>
+            <button class="copy-btn" data-del="${i}">✕</button>
+          </td></tr>`).join('') + `</tbody></table>`;
+    } else {
+      const head = cat === 'hosts' ? 'HOST' : cat === 'urls' ? 'URL' : 'EMAIL';
+      table = `<table class="loot"><thead><tr>
+        <th>${head}</th><th>SOURCE</th><th></th></tr></thead><tbody>` +
+        rows.map((r, i) => `<tr>
+          <td class="val">${esc(r.value)}</td>
+          <td class="src"><span class="tag">${esc(r.src||'?')}</span></td>
+          <td class="act">
+            <button class="copy-btn" data-copy="${esc(r.value)}">⧉</button>
+            <button class="copy-btn" data-del="${i}">✕</button>
+          </td></tr>`).join('') + `</tbody></table>`;
+    }
+
+    p.innerHTML = `
+      <div class="toolrow">
+        <div class="sec__title bracket">${CATS.find(c=>c.id===cat).label} · ${rows.length}</div>
+        <div class="spacer"></div>
+        <button class="btn btn--ghost" id="btn-copy-col">COPY COLUMN</button>
+      </div>
+      ${table}
+      ${addRowHTML(cat)}`;
+
+    // wire copy/delete
+    p.querySelectorAll('[data-copy]').forEach(b =>
+      b.addEventListener('click', () => { copyText(b.dataset.copy); flash(b); toast('◈ COPIED'); }));
+    p.querySelectorAll('[data-del]').forEach(b =>
+      b.addEventListener('click', () => {
+        rows.splice(+b.dataset.del, 1); save(); renderAll(); toast('✕ REMOVED');
+      }));
+    $('btn-copy-col').addEventListener('click', () => {
+      const vals = rows.map(r => cat === 'creds' ? (r.user + ':' + r.pass) : r.value).join('\n');
+      if (!vals) { toast('! EMPTY'); return; }
+      copyText(vals); toast('◈ COPIED ' + rows.length + ' ' + cat.toUpperCase());
+    });
+    wireAddRow(cat);
+  }
+
+  function addRowHTML(cat) {
+    if (cat === 'creds') {
+      return `<div class="add-row">
+        <input type="text" id="add-a" placeholder="user">
+        <input type="text" id="add-b" placeholder="password">
+        <button class="btn btn--go" id="btn-add">＋ ADD</button></div>`;
+    }
+    if (cat === 'hashes') {
+      return `<div class="add-row">
+        <input type="text" id="add-a" placeholder="user (optional)">
+        <input type="text" id="add-b" class="a-wide" placeholder="hash — type auto-detected">
+        <button class="btn btn--go" id="btn-add">＋ ADD</button></div>`;
+    }
+    const ph = cat === 'hosts' ? '10.0.0.1:port' : cat === 'urls' ? 'https://…' : 'name@host';
+    return `<div class="add-row">
+      <input type="text" id="add-b" class="a-wide" placeholder="${ph}">
+      <button class="btn btn--go" id="btn-add">＋ ADD</button></div>`;
+  }
+
+  function wireAddRow(cat) {
+    const btn = $('btn-add');
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      if (cat === 'creds') {
+        const u = $('add-a').value.trim(), pw = $('add-b').value.trim();
+        if (!u && !pw) { toast('! EMPTY'); return; }
+        loot.creds.push({ user:u || '(unknown)', pass:pw, src:'manual' });
+      } else if (cat === 'hashes') {
+        const u = $('add-a').value.trim(), h = $('add-b').value.trim();
+        if (!h) { toast('! HASH REQUIRED'); return; }
+        loot.hashes.push({ value:h, type:classifyHash(h) || 'UNKNOWN', user:u, src:'manual' });
+      } else {
+        const v = $('add-b').value.trim();
+        if (!v) { toast('! EMPTY'); return; }
+        loot[cat].push({ value:v, src:'manual' });
+      }
+      save(); renderAll(); toast('＋ ADDED');
+    });
+  }
+
+  function renderAll() { renderStats(); renderTabs(); renderPanel(); }
+
+  /* ── Export ─────────────────────────────────────────────────── */
+  function exportJSON() {
+    const payload = { module:'MOTHER.SYS.07.LOOT', exported:new Date().toISOString(), loot };
+    copyText(JSON.stringify(payload, null, 2));
+    toast('◈ ALL LOOT → JSON ON CLIPBOARD');
+  }
+  function exportCSV() {
+    const cat = activeCat, rows = loot[cat];
+    if (!rows.length) { toast('! SECTION EMPTY'); return; }
+    let cols, lines;
+    const q = (s) => '"' + String(s == null ? '' : s).replace(/"/g, '""') + '"';
+    if (cat === 'creds') {
+      cols = ['user','pass','src'];
+      lines = rows.map(r => [r.user, r.pass, r.src]);
+    } else if (cat === 'hashes') {
+      cols = ['user','hash','type','src'];
+      lines = rows.map(r => [r.user, r.value, r.type, r.src]);
+    } else {
+      cols = [cat.replace(/s$/, ''), 'src'];
+      lines = rows.map(r => [r.value, r.src]);
+    }
+    const csv = [cols.join(','), ...lines.map(l => l.map(q).join(','))].join('\n');
+    copyText(csv);
+    toast('◈ ' + cat.toUpperCase() + ' CSV → CLIPBOARD (' + rows.length + ')');
+  }
+
+  /* ── Clipboard + toast + flash ──────────────────────────────── */
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    } else fallbackCopy(text);
+  }
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+  }
+  function flash(el) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); }
+  let toastTimer = null;
+  function toast(msg) {
+    const el = $('toast'); el.textContent = msg; el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
+  /* ── Wire up ────────────────────────────────────────────────── */
+  $('btn-parse').addEventListener('click', () => {
+    const text = $('ingest').value;
+    if (!text.trim()) { toast('! NOTHING TO PARSE'); return; }
+    pendingUser = null;
+    const parsed = parse(text, 'paste');
+    const added = mergeLoot(parsed);
+    save(); renderAll();
+    toast(added ? ('◈ +' + added + ' NEW ARTIFACTS') : '— NO NEW ARTIFACTS —');
+  });
+  $('btn-sample').addEventListener('click', () => { $('ingest').value = SAMPLE; });
+  $('btn-clear').addEventListener('click', () => { $('ingest').value = ''; });
+  $('btn-export-json').addEventListener('click', exportJSON);
+  $('btn-export-csv').addEventListener('click', exportCSV);
+  $('btn-purge').addEventListener('click', () => {
+    loot = emptyLoot(); save(); renderAll(); toast('✕ ALL LOOT WIPED');
+  });
+
+  renderAll();
+  </script>
+</body>
+</html>

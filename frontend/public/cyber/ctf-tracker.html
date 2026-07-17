@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — CTF / ASSIGNMENTS</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     CTF / ASSIGNMENTS — flag tracker + coursework board. SYS.11.
+     Left nav toggles CTF EVENTS vs ASSIGNMENTS. Both persist to
+     localStorage. Overdue = due-date string compare vs TODO const.
+     Module-specific CSS only; theme from mother.css.
+     ═══════════════════════════════════════════════════════════════ */
+  .view { padding:16px; max-width:900px; }
+  .view__title { font-size:11px; letter-spacing:0.22em; color:var(--phos-dim);
+    text-transform:uppercase; margin-bottom:14px; display:flex; align-items:center; gap:10px; }
+  .view__title::after { content:''; flex:1; height:1px; background:var(--border-dim); }
+
+  /* ── CTF cards ── */
+  .ctf-card__top { display:flex; align-items:flex-start; gap:10px; }
+  .ctf-card__name { font-size:13px; color:var(--phos-br); text-shadow:var(--glow);
+    letter-spacing:0.05em; flex:1; }
+  .ctf-card__meta { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin:8px 0 10px; }
+
+  .bar { height:10px; background:var(--bg-input); border:1px solid var(--border-dim);
+    position:relative; overflow:hidden; margin:9px 0 6px; }
+  .bar__fill { height:100%; background:linear-gradient(90deg,var(--phos-dim),var(--phos));
+    box-shadow:0 0 8px rgba(51,255,51,0.4); transition:width 200ms ease; }
+  .bar--done .bar__fill { background:linear-gradient(90deg,var(--holo-dim),var(--holo));
+    box-shadow:0 0 8px rgba(0,200,255,0.4); }
+  .ctf-card__flags { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .ctf-card__count { font-size:11px; color:var(--phos); letter-spacing:0.06em; }
+  .ctf-card__count b { color:var(--phos-br); font-size:14px; }
+  .flag-ctrl { display:flex; gap:5px; align-items:center; }
+  .step-btn { background:transparent; border:1px solid var(--phos-dim); color:var(--phos);
+    font-family:var(--font); font-weight:bold; font-size:13px; width:24px; height:24px; cursor:pointer;
+    line-height:1; transition:all 120ms ease; }
+  .step-btn:hover { background:rgba(51,255,51,0.12); box-shadow:var(--glow); }
+  .ctf-card__actions { display:flex; gap:6px; margin-top:10px; }
+  .card__x { position:absolute; top:8px; right:10px; background:none; border:none; color:var(--phos-dim);
+    font-family:var(--font); font-size:13px; cursor:pointer; }
+  .card__x:hover { color:var(--alert); }
+
+  /* ── Assignment rows ── */
+  .asn { display:grid; grid-template-columns:1fr auto; gap:6px 12px; align-items:center;
+    border:1px solid var(--border); background:var(--bg-panel); padding:10px 12px; margin-bottom:9px;
+    position:relative; transition:border-color 120ms ease; }
+  .asn:hover { border-color:var(--phos-dim); }
+  .asn--overdue { border-left:2px solid var(--alert); }
+  .asn__title { font-size:12px; color:var(--phos-br); letter-spacing:0.04em; }
+  .asn__course { font-size:9px; color:var(--phos-dim); letter-spacing:0.1em; text-transform:uppercase; }
+  .asn__due { font-size:10px; color:var(--phos-dim); letter-spacing:0.06em; white-space:nowrap; text-align:right; }
+  .asn__due.late { color:var(--alert); text-shadow:0 0 5px rgba(255,68,51,0.4); }
+  .asn__due.soon { color:var(--amber); }
+  .asn__notes { grid-column:1 / -1; font-size:10px; color:var(--phos-dim); line-height:1.4;
+    border-top:1px solid var(--border-dim); padding-top:6px; margin-top:2px; }
+  .asn__bottom { grid-column:1 / -1; display:flex; align-items:center; gap:8px; margin-top:4px; }
+  .status-chip { cursor:pointer; user-select:none; }
+  .asn__act { display:flex; gap:5px; margin-left:auto; }
+
+  /* ── Form ── */
+  .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:9px; margin-bottom:10px; }
+  .form-grid .field.full { grid-column:1 / -1; }
+  .form-actions { display:flex; gap:6px; }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">CTF / ASSIGN<small>MOTHER · SYS.11 · FLAG &amp; COURSEWORK TRACKER</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Flags Captured<b id="s-flags">0</b></div>
+      <div class="m-stat">Active Boxes<b id="s-active">0</b></div>
+      <div class="m-stat">Assignments Due<b id="s-due">0</b></div>
+    </div>
+    <div class="m-haz"></div>
+  </header>
+
+  <div class="m-body split-nav">
+    <nav class="pane pane--nav">
+      <div class="navlist">
+        <button class="navitem navitem--active" data-view="ctf">
+          ▚ CTF EVENTS<span class="count" id="n-ctf">0</span></button>
+        <button class="navitem" data-view="asn">
+          ▤ ASSIGNMENTS<span class="count" id="n-asn">0</span></button>
+      </div>
+      <div class="sec">
+        <div class="sec__title bracket">SYSTEM CLOCK</div>
+        <div class="dim" style="font-size:11px; letter-spacing:0.1em;">TODAY<br>
+          <b class="holo" style="font-size:14px;" id="clock">2026-07-12</b></div>
+      </div>
+    </nav>
+
+    <section class="pane" id="main">
+      <!-- CTF VIEW -->
+      <div class="view" id="view-ctf">
+        <div class="view__title">◤ CTF EVENTS ◥
+          <button class="btn btn--holo" id="btn-add-ctf" style="margin-left:auto;">+ NEW EVENT</button>
+        </div>
+        <div id="ctf-form-slot"></div>
+        <div id="ctf-list"></div>
+      </div>
+
+      <!-- ASSIGNMENTS VIEW -->
+      <div class="view hidden" id="view-asn">
+        <div class="view__title">◤ COURSEWORK / ASSIGNMENTS ◥
+          <button class="btn btn--holo" id="btn-add-asn" style="margin-left:auto;">+ NEW ASSIGNMENT</button>
+        </div>
+        <div id="asn-form-slot"></div>
+        <div id="asn-list"></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const TODAY = '2026-07-12';            // fixed "now" — ISO string compare, no Date.now()
+  const LS_CTF = 'mother.ctf.events.v1';
+  const LS_ASN = 'mother.ctf.assignments.v1';
+
+  const PLATFORMS = ['HTB','THM','CTFtime','PicoCTF'];
+  const CTF_STATUS = ['active','done','upcoming'];
+  const ASN_STATUS = ['TODO','IN-PROGRESS','DONE'];
+
+  /* ── Seed data ── */
+  const SEED_CTF = [
+    { id:'c1', name:'HTB Season V — Machines', platform:'HTB', found:6, total:12,
+      status:'active', link:'https://app.hackthebox.com' },
+    { id:'c2', name:'TryHackMe: Offensive Pentesting', platform:'THM', found:14, total:14,
+      status:'done', link:'https://tryhackme.com' },
+    { id:'c3', name:'PicoCTF 2026 Practice', platform:'PicoCTF', found:3, total:20,
+      status:'active', link:'https://picoctf.org' },
+    { id:'c4', name:'DownUnderCTF Qualifiers', platform:'CTFtime', found:0, total:25,
+      status:'upcoming', link:'https://ctftime.org' },
+  ];
+  const SEED_ASN = [
+    { id:'a1', title:'Nmap Enumeration Lab Report', course:'SEC-340 Network Security',
+      due:'2026-07-10', status:'IN-PROGRESS', notes:'Write up service/version scan of lab subnet; include filtered-port analysis.' },
+    { id:'a2', title:'Buffer Overflow Writeup', course:'SEC-410 Exploit Dev',
+      due:'2026-07-15', status:'TODO', notes:'Classic stack smash on vuln binary; EIP control + shellcode. Mitigations section required.' },
+    { id:'a3', title:'Web App Threat Model', course:'SEC-355 AppSec',
+      due:'2026-07-22', status:'TODO', notes:'STRIDE model of the DVWA target. Data-flow diagram + top-5 risk table.' },
+    { id:'a4', title:'Wireshark Capture Analysis', course:'SEC-340 Network Security',
+      due:'2026-07-05', status:'DONE', notes:'Identified plaintext creds + ARP spoof in provided pcap. Submitted.' },
+  ];
+
+  /* ── State / persistence ── */
+  function load(key, seed) {
+    try { const raw = localStorage.getItem(key); if (raw) return JSON.parse(raw); } catch (e) {}
+    return JSON.parse(JSON.stringify(seed));
+  }
+  function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+
+  let ctf = load(LS_CTF, SEED_CTF);
+  let asn = load(LS_ASN, SEED_ASN);
+  let uid = () => 'x' + Math.random().toString(36).slice(2, 9);
+
+  /* ── Stats ── */
+  function statusTag(s) {
+    const map = { active:'tag--holo', done:'tag--ok', upcoming:'tag--amber',
+      'TODO':'tag--amber', 'IN-PROGRESS':'tag--holo', 'DONE':'tag--ok' };
+    return map[s] || '';
+  }
+  function updateStats() {
+    const flags = ctf.reduce((n, c) => n + c.found, 0);
+    const active = ctf.filter(c => c.status === 'active').length;
+    // "due" = assignments not DONE and due on/after today (still owed)
+    const due = asn.filter(a => a.status !== 'DONE').length;
+    $('s-flags').textContent = flags;
+    $('s-active').textContent = active;
+    $('s-due').textContent = due;
+    $('n-ctf').textContent = ctf.length;
+    $('n-asn').textContent = asn.length;
+  }
+
+  /* ── CTF render ── */
+  function renderCtf() {
+    const el = $('ctf-list'); el.innerHTML = '';
+    if (!ctf.length) { el.innerHTML = '<div class="empty"><div class="icon">▚</div><div class="big">NO CTF EVENTS</div></div>'; return; }
+    ctf.forEach(c => {
+      const pct = c.total ? Math.round((c.found / c.total) * 100) : 0;
+      const done = c.status === 'done' || (c.total && c.found >= c.total);
+      const card = document.createElement('div');
+      card.className = 'card brackets';
+      card.innerHTML =
+        `<button class="card__x" title="DELETE">✕</button>
+         <div class="ctf-card__top">
+           <div class="ctf-card__name">${esc(c.name)}</div>
+         </div>
+         <div class="ctf-card__meta">
+           <span class="tag">${esc(c.platform)}</span>
+           <span class="tag ${statusTag(c.status)}">${c.status}</span>
+           ${c.link ? `<a class="tag tag--holo" href="${esc(c.link)}" target="_blank" rel="noopener">↗ OPEN</a>` : ''}
+         </div>
+         <div class="bar ${done ? 'bar--done' : ''}"><div class="bar__fill" style="width:${pct}%"></div></div>
+         <div class="ctf-card__flags">
+           <div class="ctf-card__count"><b>${c.found}</b> / ${c.total} FLAGS · ${pct}%</div>
+           <div class="flag-ctrl">
+             <button class="step-btn" data-act="dec">−</button>
+             <button class="step-btn" data-act="inc">+</button>
+             <button class="btn btn--ghost" data-act="edit">EDIT</button>
+           </div>
+         </div>`;
+      card.querySelector('.card__x').addEventListener('click', () => { ctf = ctf.filter(x => x !== c); commit(); });
+      card.querySelector('[data-act="inc"]').addEventListener('click', () => {
+        if (c.found < c.total) c.found++; if (c.found >= c.total) c.status = 'done'; commit(); });
+      card.querySelector('[data-act="dec"]').addEventListener('click', () => {
+        if (c.found > 0) c.found--; if (c.status === 'done' && c.found < c.total) c.status = 'active'; commit(); });
+      card.querySelector('[data-act="edit"]').addEventListener('click', () => openCtfForm(c));
+      el.appendChild(card);
+    });
+  }
+
+  /* ── Assignment render ── */
+  function dueMeta(a) {
+    // ISO YYYY-MM-DD sorts lexicographically → safe string compare vs TODAY
+    if (a.status === 'DONE') return { cls:'', label:'DONE ' + a.due };
+    if (a.due < TODAY) return { cls:'late', label:'OVERDUE · ' + a.due };
+    if (a.due === TODAY) return { cls:'late', label:'DUE TODAY · ' + a.due };
+    // within ~7 days → soon (compare day slice)
+    const soon = withinDays(TODAY, a.due, 7);
+    return { cls: soon ? 'soon' : '', label:'DUE ' + a.due };
+  }
+  function withinDays(from, to, days) {
+    // crude ISO day diff without Date(): parse Y-M-D to ordinal-ish
+    const d = (s) => { const [y,m,dd] = s.split('-').map(Number); return y*372 + m*31 + dd; };
+    return (d(to) - d(from)) <= days;
+  }
+  function renderAsn() {
+    const el = $('asn-list'); el.innerHTML = '';
+    if (!asn.length) { el.innerHTML = '<div class="empty"><div class="icon">▤</div><div class="big">NO ASSIGNMENTS</div></div>'; return; }
+    // sort: not-done by due asc, done last
+    const sorted = [...asn].sort((a, b) => {
+      const ad = a.status === 'DONE' ? 1 : 0, bd = b.status === 'DONE' ? 1 : 0;
+      if (ad !== bd) return ad - bd;
+      return a.due < b.due ? -1 : a.due > b.due ? 1 : 0;
+    });
+    sorted.forEach(a => {
+      const dm = dueMeta(a);
+      const row = document.createElement('div');
+      row.className = 'asn' + (dm.cls === 'late' ? ' asn--overdue' : '');
+      row.innerHTML =
+        `<div>
+           <div class="asn__title">${esc(a.title)}</div>
+           <div class="asn__course">${esc(a.course)}</div>
+         </div>
+         <div class="asn__due ${dm.cls}">${dm.label}</div>
+         ${a.notes ? `<div class="asn__notes">${esc(a.notes)}</div>` : ''}
+         <div class="asn__bottom">
+           <span class="tag ${statusTag(a.status)} status-chip" title="CLICK TO CYCLE">${a.status}</span>
+           <div class="asn__act">
+             <button class="btn btn--ghost" data-act="edit">EDIT</button>
+             <button class="btn btn--ghost" data-act="del">DEL</button>
+           </div>
+         </div>`;
+      row.querySelector('.status-chip').addEventListener('click', () => {
+        const i = ASN_STATUS.indexOf(a.status);
+        a.status = ASN_STATUS[(i + 1) % ASN_STATUS.length]; commit(); });
+      row.querySelector('[data-act="edit"]').addEventListener('click', () => openAsnForm(a));
+      row.querySelector('[data-act="del"]').addEventListener('click', () => { asn = asn.filter(x => x !== a); commit(); });
+      el.appendChild(row);
+    });
+  }
+
+  /* ── Forms ── */
+  function openCtfForm(c) {
+    const isNew = !c;
+    const d = c || { name:'', platform:'HTB', found:0, total:10, status:'active', link:'' };
+    $('ctf-form-slot').innerHTML =
+      `<div class="card">
+        <div class="sec__title">${isNew ? 'NEW CTF EVENT' : 'EDIT EVENT'}</div>
+        <div class="form-grid">
+          <div class="field full"><label>Event Name</label><input id="f-name" value="${esc(d.name)}"></div>
+          <div class="field"><label>Platform</label><select id="f-plat">${
+            PLATFORMS.map(p => `<option ${p===d.platform?'selected':''}>${p}</option>`).join('')}</select></div>
+          <div class="field"><label>Status</label><select id="f-status">${
+            CTF_STATUS.map(s => `<option ${s===d.status?'selected':''}>${s}</option>`).join('')}</select></div>
+          <div class="field"><label>Flags Found</label><input id="f-found" type="number" min="0" value="${d.found}"></div>
+          <div class="field"><label>Flags Total</label><input id="f-total" type="number" min="1" value="${d.total}"></div>
+          <div class="field full"><label>Link (optional)</label><input id="f-link" value="${esc(d.link||'')}" placeholder="https://"></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn--go" id="f-save">${isNew ? '+ ADD' : 'SAVE'}</button>
+          <button class="btn btn--ghost" id="f-cancel">CANCEL</button>
+        </div>
+      </div>`;
+    $('f-save').addEventListener('click', () => {
+      const rec = {
+        id: c ? c.id : uid(),
+        name: $('f-name').value.trim() || 'UNTITLED EVENT',
+        platform: $('f-plat').value,
+        status: $('f-status').value,
+        found: Math.max(0, +$('f-found').value || 0),
+        total: Math.max(1, +$('f-total').value || 1),
+        link: $('f-link').value.trim(),
+      };
+      if (rec.found > rec.total) rec.found = rec.total;
+      if (c) Object.assign(c, rec); else ctf.push(rec);
+      closeCtfForm(); commit();
+    });
+    $('f-cancel').addEventListener('click', closeCtfForm);
+  }
+  function closeCtfForm() { $('ctf-form-slot').innerHTML = ''; }
+
+  function openAsnForm(a) {
+    const isNew = !a;
+    const d = a || { title:'', course:'', due:TODAY, status:'TODO', notes:'' };
+    $('asn-form-slot').innerHTML =
+      `<div class="card">
+        <div class="sec__title">${isNew ? 'NEW ASSIGNMENT' : 'EDIT ASSIGNMENT'}</div>
+        <div class="form-grid">
+          <div class="field full"><label>Title</label><input id="f-title" value="${esc(d.title)}"></div>
+          <div class="field"><label>Course</label><input id="f-course" value="${esc(d.course)}"></div>
+          <div class="field"><label>Due Date</label><input id="f-due" type="date" value="${esc(d.due)}"></div>
+          <div class="field"><label>Status</label><select id="f-astatus">${
+            ASN_STATUS.map(s => `<option ${s===d.status?'selected':''}>${s}</option>`).join('')}</select></div>
+          <div class="field full"><label>Notes</label><textarea id="f-notes" rows="2">${esc(d.notes||'')}</textarea></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn--go" id="fa-save">${isNew ? '+ ADD' : 'SAVE'}</button>
+          <button class="btn btn--ghost" id="fa-cancel">CANCEL</button>
+        </div>
+      </div>`;
+    $('fa-save').addEventListener('click', () => {
+      const rec = {
+        id: a ? a.id : uid(),
+        title: $('f-title').value.trim() || 'UNTITLED',
+        course: $('f-course').value.trim() || '—',
+        due: $('f-due').value || TODAY,
+        status: $('f-astatus').value,
+        notes: $('f-notes').value.trim(),
+      };
+      if (a) Object.assign(a, rec); else asn.push(rec);
+      closeAsnForm(); commit();
+    });
+    $('fa-cancel').addEventListener('click', closeAsnForm);
+  }
+  function closeAsnForm() { $('asn-form-slot').innerHTML = ''; }
+
+  /* ── Util ── */
+  function esc(s) { return String(s).replace(/[&<>"]/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c])); }
+
+  function commit() {
+    save(LS_CTF, ctf); save(LS_ASN, asn);
+    renderCtf(); renderAsn(); updateStats();
+  }
+
+  /* ── Nav ── */
+  document.querySelectorAll('.navitem').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.navitem').forEach(b => b.classList.remove('navitem--active'));
+      btn.classList.add('navitem--active');
+      const v = btn.dataset.view;
+      $('view-ctf').classList.toggle('hidden', v !== 'ctf');
+      $('view-asn').classList.toggle('hidden', v !== 'asn');
+    });
+  });
+  $('btn-add-ctf').addEventListener('click', () => openCtfForm(null));
+  $('btn-add-asn').addEventListener('click', () => openAsnForm(null));
+
+  /* ── Boot ── */
+  $('clock').textContent = TODAY;
+  commit();
+  </script>
+</body>
+</html>

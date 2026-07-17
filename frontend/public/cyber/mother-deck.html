@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — CYBERSEC DECK</title>
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     MOTHER DECK — the CYBERSEC surface. A total reskin + new layout
+     vs ATHENA WEB, with a takeover transition between the two.
+     Standalone preview — modules are live where built, placeholders
+     otherwise. TERMINAL is wired to the real Kali relay.
+     ═══════════════════════════════════════════════════════════════ */
+  :root {
+    --phos:        #33ff33;
+    --phos-br:     #85ff85;
+    --phos-dim:    #1a8c1a;
+    --phos-ghost:  #0c3d0c;
+    --amber:       #e8a63a;
+    --alert:       #ff4433;
+    --bg:          #030603;
+    --bg-panel:    #071007;
+    --bg-deep:     #020402;
+    --border:      rgba(51,255,51,0.22);
+    --border-dim:  rgba(51,255,51,0.08);
+    --hazard:      repeating-linear-gradient(45deg, #1a8c1a 0 10px, #030603 10px 20px);
+    --font:        'Courier New', 'Lucida Console', monospace;
+    --glow:        0 0 6px rgba(51,255,51,0.5);
+    --glow-lg:     0 0 12px rgba(51,255,51,0.6), 0 0 30px rgba(51,255,51,0.25);
+    /* ATHENA WEB palette (for the toggle-away state) */
+    --holo:        #00c8ff;
+    --holo-dim:    #0088bb;
+    --a-amber:     #ffb000;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg-deep);
+    color: var(--phos);
+    font-family: var(--font);
+    overflow: hidden;
+  }
+
+  /* Global CRT overlay — heavier for MOTHER */
+  #crt {
+    position: fixed; inset: 0; pointer-events: none; z-index: 900;
+    background:
+      repeating-linear-gradient(to bottom, transparent 0 2px, rgba(0,0,0,0.16) 2px 4px),
+      radial-gradient(ellipse at center, transparent 52%, rgba(0,0,0,0.62) 100%);
+    mix-blend-mode: normal;
+  }
+  #crt.flicker { animation: flick 3.4s infinite steps(1); }
+  @keyframes flick { 0%,97%{opacity:1;} 97.5%{opacity:0.82;} 98%{opacity:1;} 98.5%{opacity:0.9;} }
+
+  .hidden { display: none !important; }
+
+  /* ─────────────────────────────────────────────────────────────
+     ATHENA WEB stand-in (toggle target — the "return to Athena" side)
+     ───────────────────────────────────────────────────────────── */
+  #athena {
+    position: absolute; inset: 0; z-index: 10;
+    background: radial-gradient(ellipse at 60% 40%, #0a1420 0%, #030608 70%);
+    color: var(--a-amber);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 26px;
+  }
+  #athena .a-logo { font-size: 34px; letter-spacing: 0.42em; color: var(--a-amber);
+    text-shadow: 0 0 10px rgba(255,176,0,0.5); }
+  #athena .a-sub { font-size: 11px; letter-spacing: 0.3em; color: #7a8fa8; }
+  #athena .a-panels { display: flex; gap: 14px; margin-top: 8px; }
+  #athena .a-panel { width: 150px; height: 84px; border: 1px solid rgba(0,200,255,0.25);
+    background: rgba(0,200,255,0.03); padding: 10px; font-size: 9px; letter-spacing: 0.14em;
+    color: var(--holo); }
+  #athena .a-panel b { color: var(--a-amber); display:block; margin-bottom: 6px; letter-spacing: 0.2em; }
+  .cross-btn {
+    margin-top: 14px; cursor: pointer; position: relative;
+    padding: 16px 30px; border: 1px solid var(--phos-dim);
+    background: rgba(51,255,51,0.05); color: var(--phos);
+    font-family: var(--font); font-size: 13px; letter-spacing: 0.24em;
+    text-transform: uppercase; transition: all 160ms ease;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .cross-btn:hover { background: rgba(51,255,51,0.12); box-shadow: var(--glow-lg); color: var(--phos-br); }
+  .cross-btn .globe { width: 16px; height: 16px; border-radius: 50%;
+    border: 1px solid var(--phos); box-shadow: inset 0 0 6px var(--phos); animation: spin 4s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ─────────────────────────────────────────────────────────────
+     TAKEOVER TRANSITION
+     ───────────────────────────────────────────────────────────── */
+  #takeover {
+    position: absolute; inset: 0; z-index: 800; background: #000;
+    display: flex; flex-direction: column; justify-content: center; padding: 0 12vw;
+    color: var(--phos); font-size: 15px; letter-spacing: 0.14em; line-height: 2.1;
+  }
+  #takeover .to-line { opacity: 0; white-space: pre; text-shadow: var(--glow); }
+  #takeover .to-line.show { opacity: 1; }
+  #takeover .to-line.big { font-size: 24px; letter-spacing: 0.3em; color: var(--phos-br); }
+  #takeover .caret { display:inline-block; width:10px; background: var(--phos); animation: cb 0.7s step-end infinite; }
+  @keyframes cb { 50% { opacity: 0; } }
+  /* CRT collapse/expand */
+  .collapse { animation: collapse 0.5s ease forwards; }
+  .expand   { animation: expand 0.55s ease forwards; }
+  @keyframes collapse { to { transform: scaleY(0.004) scaleX(1.1); filter: brightness(3); opacity: 0.6; } }
+  @keyframes expand { from { transform: scaleY(0.004) scaleX(1.1); filter: brightness(3); } to { transform: none; filter: none; } }
+
+  /* ─────────────────────────────────────────────────────────────
+     MOTHER DECK
+     ───────────────────────────────────────────────────────────── */
+  #mother {
+    position: absolute; inset: 0; z-index: 20;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    grid-template-columns: 100%;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(51,255,51,0.04), transparent 60%),
+      var(--bg-deep);
+  }
+
+  /* Header */
+  .m-head {
+    display: flex; align-items: center; gap: 16px;
+    padding: 8px 16px; border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, rgba(51,255,51,0.05), transparent);
+  }
+  .m-brand { font-size: 17px; letter-spacing: 0.34em; color: var(--amber); text-shadow: 0 0 8px rgba(232,166,58,0.5); white-space: nowrap; }
+  .m-brand small { display:block; font-size: 8px; letter-spacing: 0.26em; color: var(--phos-dim); }
+  .m-haz { flex: 1; height: 10px; background: var(--hazard); opacity: 0.35; margin: 0 6px;
+    -webkit-mask: linear-gradient(90deg, transparent, #000 20%, #000 80%, transparent); }
+  .m-status { display: flex; gap: 14px; font-size: 9px; letter-spacing: 0.12em; color: var(--phos-dim); text-transform: uppercase; }
+  .m-status b { color: var(--phos); }
+  .m-status .live { color: var(--holo); text-shadow: 0 0 5px rgba(0,200,255,0.5); }
+
+  /* Mode toggle */
+  .mode-toggle { display: flex; border: 1px solid var(--border); }
+  .mode-toggle button { background: transparent; border: none; cursor: pointer;
+    font-family: var(--font); font-size: 10px; letter-spacing: 0.16em; padding: 7px 14px;
+    color: var(--phos-dim); transition: all 140ms ease; text-transform: uppercase; }
+  .mode-toggle button.on-athena { color: var(--a-amber); }
+  .mode-toggle button.active { background: var(--phos); color: var(--bg); font-weight: bold; box-shadow: var(--glow); }
+  .mode-toggle button.on-athena.active { background: var(--a-amber); color: #000; box-shadow: 0 0 8px rgba(255,176,0,0.5); }
+
+  /* Body: subsystem spine · stage · core */
+  .m-body { display: grid; grid-template-columns: 210px 1fr 340px; min-height: 0; }
+
+  /* Subsystem spine */
+  .m-spine { border-right: 1px solid var(--border); background: var(--bg-panel);
+    overflow-y: auto; padding: 8px 0; }
+  .m-spine__title { font-size: 8px; letter-spacing: 0.24em; color: var(--phos-dim);
+    padding: 6px 14px; text-transform: uppercase; }
+  .sub {
+    display: grid; grid-template-columns: 26px 1fr auto; align-items: center; gap: 8px;
+    width: 100%; background: transparent; border: none; border-left: 2px solid transparent;
+    color: var(--phos-dim); font-family: var(--font); font-size: 11px; letter-spacing: 0.08em;
+    padding: 8px 12px; cursor: pointer; text-align: left; text-transform: uppercase;
+    transition: all 120ms ease;
+  }
+  .sub:hover { color: var(--phos); background: rgba(51,255,51,0.04); }
+  .sub__num { color: var(--phos-ghost); font-size: 10px; }
+  .sub__badge { font-size: 7px; letter-spacing: 0.1em; padding: 1px 4px; border: 1px solid; }
+  .sub__badge.live { color: var(--holo); border-color: var(--holo-dim); }
+  .sub__badge.soon { color: var(--phos-ghost); border-color: var(--phos-ghost); }
+  .sub--active { color: #021018; background: var(--holo); border-left-color: #aef0ff; box-shadow: 0 0 8px rgba(0,200,255,0.4); }
+  .sub--active .sub__num { color: var(--bg); }
+  .sub--active .sub__badge { color: var(--bg); border-color: var(--bg); }
+
+  /* Stage */
+  .m-stage { position: relative; overflow: hidden; background: var(--bg-deep);
+    display: flex; flex-direction: column; }
+  .m-stage__bar { display: flex; align-items: center; gap: 10px; padding: 7px 16px;
+    border-bottom: 1px solid var(--border-dim); font-size: 10px; letter-spacing: 0.18em;
+    color: var(--phos); text-transform: uppercase; }
+  .m-stage__bar .brackets { color: var(--phos-dim); }
+  .m-stage__body { flex: 1; min-height: 0; position: relative; }
+
+  /* Module frame */
+  .module { position: absolute; inset: 0; padding: 20px; overflow: auto; }
+  .module--frame { padding: 6px; overflow: hidden; }
+  .module iframe { width: 100%; height: 100%; border: 1px solid var(--border); background: #050a05; }
+  .placeholder { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; text-align: center; }
+  .placeholder .ph-icon { font-size: 42px; filter: grayscale(0.4) brightness(1.3); }
+  .placeholder .ph-title { font-size: 18px; letter-spacing: 0.28em; color: var(--phos-br); text-shadow: var(--glow); }
+  .placeholder .ph-desc { max-width: 440px; font-size: 12px; line-height: 1.8; color: var(--phos-dim); letter-spacing: 0.06em; }
+  .placeholder .ph-feats { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 480px; margin-top: 6px; }
+  .placeholder .ph-feat { border: 1px solid var(--border-dim); padding: 4px 10px; font-size: 10px; letter-spacing: 0.1em; color: var(--phos-dim); }
+  .placeholder .ph-status { margin-top: 10px; font-size: 9px; letter-spacing: 0.24em; color: var(--amber); }
+  .corner { position: absolute; width: 16px; height: 16px; border: 2px solid var(--phos-dim); opacity: 0.6; }
+  .corner.tl { top: 8px; left: 8px; border-right: none; border-bottom: none; }
+  .corner.tr { top: 8px; right: 8px; border-left: none; border-bottom: none; }
+  .corner.bl { bottom: 8px; left: 8px; border-right: none; border-top: none; }
+  .corner.br { bottom: 8px; right: 8px; border-left: none; border-top: none; }
+
+  /* MOTHER core column */
+  .m-core { border-left: 1px solid var(--border); background: var(--bg-panel);
+    display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .core-wrap { padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 6px;
+    border-bottom: 1px solid var(--border-dim); }
+  .core-title { font-size: 8px; letter-spacing: 0.24em; color: var(--amber); opacity: 0.9; text-transform: uppercase; }
+  #stage-title { color: var(--amber); text-shadow: 0 0 6px rgba(232,166,58,0.4); }
+  #core-canvas { width: 150px; height: 150px; }
+  .core-state { font-size: 10px; letter-spacing: 0.18em; color: var(--holo); text-shadow: 0 0 5px rgba(0,200,255,0.5); }
+  #tutor-mount { flex: 1; min-height: 0; display: flex; }
+  .vitals { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; flex: 1; }
+  .vital { display: flex; justify-content: space-between; font-size: 9px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--phos-dim); }
+  .vital b { color: var(--phos); font-weight: normal; }
+  .vital .ok { color: var(--phos-br); }
+  .vital .warn { color: var(--amber); }
+  .vital-bar { height: 4px; background: var(--phos-ghost); position: relative; margin-top: 2px; }
+  .vital-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--phos); box-shadow: var(--glow); }
+
+  /* MOTHER log / dialogue footer */
+  .m-log { border-top: 1px solid var(--border); background: var(--bg-deep);
+    display: flex; align-items: center; gap: 12px; padding: 8px 16px; }
+  .m-log__id { font-size: 9px; letter-spacing: 0.24em; color: var(--phos-dim); white-space: nowrap; }
+  .m-log__eye { width: 8px; height: 8px; border-radius: 50%; background: var(--phos);
+    box-shadow: var(--glow); animation: pulse 2.4s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+  .m-log__msg { flex: 1; font-size: 11px; letter-spacing: 0.08em; color: var(--phos); text-shadow: var(--glow); }
+  .m-log__prompt { display: flex; align-items: center; gap: 6px; }
+  .m-log__prompt span { color: var(--phos-dim); font-size: 12px; }
+  .m-log__prompt input { background: #041004; border: 1px solid var(--border); color: var(--phos);
+    font-family: var(--font); font-size: 11px; padding: 4px 8px; width: 200px; outline: none; }
+  .m-log__prompt input:focus { border-color: var(--phos); box-shadow: var(--glow); }
+</style>
+  <!-- LEARN layer — walkthroughs, tutor, guided demo control. -->
+  <link rel="stylesheet" href="/cyber/learn/walkthrough.css">
+  <link rel="stylesheet" href="/cyber/learn/tutor.css">
+  <link rel="stylesheet" href="/cyber/learn/demo.css">
+  <link rel="stylesheet" href="/cyber/learn/machrun.css">
+  <link rel="stylesheet" href="/cyber/learn/visualizer.css">
+</head>
+<body class="mode-athena">
+  <div id="crt" class="flicker"></div>
+
+  <!-- ══ ATHENA WEB (return target) ══ -->
+  <div id="athena">
+    <div class="a-logo">ATHENA</div>
+    <div class="a-sub">WEYLAND-YUTANI · TACTICAL CONTROL BRIDGE · WEB OPS</div>
+    <div class="a-panels">
+      <div class="a-panel"><b>COMMS</b>GATEWAY ONLINE — STANDING BY</div>
+      <div class="a-panel"><b>PIPELINE</b>LEAD → SITE → DEPLOY</div>
+      <div class="a-panel"><b>MISSIONS</b>ALL SYSTEMS NOMINAL</div>
+    </div>
+    <button class="cross-btn" id="to-mother">
+      <span class="globe"></span> CROSS TO CYBERSEC DECK
+    </button>
+    <div class="a-sub" style="opacity:0.6">the wireframe globe drops you into MOTHER</div>
+  </div>
+
+  <!-- ══ TAKEOVER TRANSITION ══ -->
+  <div id="takeover" class="hidden"></div>
+
+  <!-- ══ MOTHER DECK ══ -->
+  <div id="mother" class="hidden">
+    <!-- Header -->
+    <div class="m-head">
+      <div class="m-brand">MU/TH/UR 6000<small>CYBERSEC DECK · OFFENSIVE + DEFENSIVE</small></div>
+      <div class="m-haz"></div>
+      <div class="m-status">
+        <span>KALI <b class="live" id="v-kali">LINKED</b></span>
+        <span>TARGET <b id="v-target">— NONE —</b></span>
+        <span>ENGAGEMENT <b id="v-eng">IDLE</b></span>
+      </div>
+      <button id="mach-run" title="Full automated hack demo — start to finish">◈ MACH RUN</button>
+      <button id="wt-launch" title="Guided walkthrough of the deck">⌕ WALKTHROUGH</button>
+      <div class="mode-toggle">
+        <button class="on-athena" id="tg-athena">ATHENA WEB</button>
+        <button class="active" id="tg-mother">MOTHER</button>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="m-body">
+      <!-- Subsystem spine -->
+      <nav class="m-spine" id="spine">
+        <div class="m-spine__title">◤ SUBSYSTEMS ◥</div>
+      </nav>
+
+      <!-- Stage -->
+      <section class="m-stage">
+        <div class="m-stage__bar">
+          <span class="brackets">▐</span>
+          <span id="stage-title">TERMINAL</span>
+          <span class="brackets" style="margin-left:auto" id="stage-code">SYS.01</span>
+        </div>
+        <div class="m-stage__body" id="stage-body">
+          <span class="corner tl"></span><span class="corner tr"></span>
+          <span class="corner bl"></span><span class="corner br"></span>
+        </div>
+      </section>
+
+      <!-- MOTHER core -->
+      <aside class="m-core">
+        <div class="core-wrap">
+          <div class="core-title">◇ MOTHER CORE ◇</div>
+          <canvas id="core-canvas" width="150" height="150"></canvas>
+          <div class="core-state" id="core-state">ONLINE · WATCHING</div>
+        </div>
+        <!-- MOTHER TUTOR embedded into the core column (always active) -->
+        <div id="tutor-mount"></div>
+      </aside>
+    </div>
+
+    <!-- MOTHER log -->
+    <div class="m-log">
+      <span class="m-log__eye"></span>
+      <span class="m-log__id">MOTHER //</span>
+      <span class="m-log__msg" id="mother-msg">INTERFACE ENGAGED. AWAITING DIRECTIVES.</span>
+      <div class="m-log__prompt">
+        <span>&gt;_</span>
+        <input id="mother-input" placeholder="query mother…" autocomplete="off">
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    'use strict';
+    const $ = (id) => document.getElementById(id);
+
+    /* ── Modules ────────────────────────────────────────────────── */
+    const MODULES = [
+      { id: 'terminal', code: 'SYS.01', name: 'TERMINAL',      icon: '⌨', live: true, page: '/cyber/terminal.html',
+        desc: 'Live Kali shell (WSL / SSH-VM / Docker / local), token-gated.' },
+      { id: 'recon',    code: 'SYS.02', name: 'RECON MAP',     icon: '🛰', live: true, page: '/cyber/recon-map.html',
+        desc: 'The 3D sector-map engine repurposed as a live network topology.',
+        feats: ['nmap ingest', 'host graph', '3D orbit', 'click-to-target'] },
+      { id: 'command',  code: 'SYS.03', name: 'COMMAND DECK',  icon: '⌘', live: true, page: '/cyber/command-deck.html',
+        desc: 'Categorized, searchable cheatsheet with placeholder auto-fill.',
+        feats: ['recon', 'enum', 'exploit', 'post-exploit', 'privesc'] },
+      { id: 'scripts',  code: 'SYS.04', name: 'SCRIPTS VAULT', icon: '📜', live: true, page: '/cyber/scripts-vault.html',
+        desc: 'Personal script library (bash / python / ps1). Tagged, searchable.',
+        feats: ['syntax highlight', 'tags', 'run in shell'] },
+      { id: 'malware',  code: 'SYS.05', name: 'MALWARE LAB',   icon: '🦠', live: true, page: '/cyber/malware-lab.html',
+        desc: 'RE workspace for coursework samples. Samples never touch git.',
+        feats: ['sample registry', 'static triage', 'IOC library', 'RE notes'] },
+      { id: 'payload',  code: 'SYS.06', name: 'PAYLOAD FORGE', icon: '⚙', live: true, page: '/cyber/payload-forge.html',
+        desc: 'Reverse-shell / msfvenom generator with LHOST/LPORT auto-fill.',
+        feats: ['revshell one-liners', 'msfvenom', 'encoders', 'listeners'] },
+      { id: 'loot',     code: 'SYS.07', name: 'LOOT VAULT',    icon: '🔑', live: true, page: '/cyber/loot-vault.html',
+        desc: 'Auto-parses creds / hashes / hosts into a structured, exportable table.',
+        feats: ['cred harvest', 'hash table', 'host inventory'] },
+      { id: 'killchain',code: 'SYS.08', name: 'KILL CHAIN',    icon: '🎯', live: true, page: '/cyber/kill-chain.html',
+        desc: 'MITRE ATT&CK track — techniques light up as a visual attack path.',
+        feats: ['ATT&CK map', 'phase timeline', 'report export'] },
+      { id: 'blue',     code: 'SYS.09', name: 'BLUE DECK',     icon: '🛡', live: true, page: '/cyber/blue-deck.html',
+        desc: 'Defensive half: log triage, Sigma / YARA notebook, IOC match.',
+        feats: ['log triage', 'sigma/yara', 'IOC match', 'detections'] },
+      { id: 'engage',   code: 'SYS.10', name: 'ENGAGEMENTS',   icon: '📁', live: true, page: '/cyber/engagements.html',
+        desc: 'Scope a box; auto-generates a markdown writeup.',
+        feats: ['scoping', 'auto-writeup', 'notes', 'timeline'] },
+      { id: 'ctf',      code: 'SYS.11', name: 'CTF / ASSIGN',  icon: '🚩', live: true, page: '/cyber/ctf-tracker.html',
+        desc: 'Flag tracker + coursework assignments with live progress.',
+        feats: ['flag tracker', 'assignments', 'progress'] },
+      { id: 'recorder', code: 'SYS.12', name: 'SESSION REC',   icon: '⏺', live: true, page: '/cyber/session-rec.html',
+        desc: 'Asciinema-style record / replay of a terminal session.',
+        feats: ['record', 'replay', 'export cast'] },
+      { id: 'passive',  code: 'SYS.13', name: 'PASSIVE RECON', icon: '📡', live: true, page: '/cyber/passive-recon.html',
+        desc: 'OSINT aggregator — orchestrates crt.sh / theHarvester / subfinder / amass / Shodan, normalizes + correlates into assets, feeds the Loot Vault.',
+        feats: ['crt.sh', 'theHarvester', 'subfinder', 'amass', 'shodan', '→ loot vault'] },
+    ];
+
+    /* Build the spine */
+    const spine = $('spine');
+    MODULES.forEach((m, i) => {
+      const b = document.createElement('button');
+      b.className = 'sub' + (i === 0 ? ' sub--active' : '');
+      b.dataset.id = m.id;
+      b.innerHTML = `<span class="sub__num">${String(i+1).padStart(2,'0')}</span>
+        <span>${m.name}</span>
+        <span class="sub__badge ${m.live ? 'live' : 'soon'}">${m.live ? 'LIVE' : 'SOON'}</span>`;
+      b.addEventListener('click', () => selectModule(m.id));
+      spine.appendChild(b);
+    });
+
+    const TOKEN = 'MOTHER_DECK_PREVIEW';   // terminal iframe carries its own token via "/"
+    const stageBody = $('stage-body');
+    let currentModule = null;
+
+    function moduleContent(m) {
+      if (m.page) {
+        return `<div class="module module--frame"><iframe src="${m.page}" title="${m.name}"></iframe></div>`;
+      }
+      const feats = (m.feats || []).map(f => `<span class="ph-feat">${f}</span>`).join('');
+      return `<div class="module"><div class="placeholder">
+        <div class="ph-icon">${m.icon}</div>
+        <div class="ph-title">${m.name}</div>
+        <div class="ph-desc">${m.desc}</div>
+        <div class="ph-feats">${feats}</div>
+        <div class="ph-status">◆ MODULE PENDING — NEXT PREVIEW ◆</div>
+      </div></div>`;
+    }
+
+    function selectModule(id) {
+      if (id === currentModule) return;
+      const m = MODULES.find(x => x.id === id);
+      currentModule = id;
+      document.querySelectorAll('.sub').forEach(s => s.classList.toggle('sub--active', s.dataset.id === id));
+      $('stage-title').textContent = m.name;
+      $('stage-code').textContent = m.code;
+      // keep corner brackets, swap the module content
+      stageBody.querySelectorAll('.module').forEach(el => el.remove());
+      stageBody.insertAdjacentHTML('beforeend', moduleContent(m));
+      motherSays(m.live
+        ? `${m.name} ONLINE.`
+        : `${m.name} NOT YET COMPILED. STAND BY.`);
+    }
+
+    /* ── MOTHER voice ───────────────────────────────────────────── */
+    const IDLE_LINES = [
+      'INTERFACE ENGAGED. AWAITING DIRECTIVES.',
+      'ALL DECK SYSTEMS NOMINAL.',
+      'REMINDER: AUTHORIZED TARGETS ONLY.',
+      'MONITORING. I AM ALWAYS WATCHING.',
+      'THE OPTION TO RETURN TO ATHENA REMAINS OPEN.',
+      'DEFENSIVE POSTURE: GREEN. OFFENSIVE POSTURE: READY.',
+    ];
+    let idleIdx = 0, idleTimer = null;
+    function motherSays(msg) {
+      $('mother-msg').textContent = msg;
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(idleCycle, 6000);
+    }
+    function idleCycle() {
+      idleIdx = (idleIdx + 1) % IDLE_LINES.length;
+      $('mother-msg').textContent = IDLE_LINES[idleIdx];
+      idleTimer = setTimeout(idleCycle, 6000);
+    }
+
+    $('mother-input').addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const q = e.target.value.trim(); e.target.value = '';
+      if (!q) return;
+      const canned = {
+        help: 'SUBSYSTEMS 01–12 ON THE LEFT SPINE. TERMINAL IS LIVE.',
+        status: 'KALI LINKED. NO ACTIVE ENGAGEMENT. POSTURE GREEN.',
+        mother: 'I AM THE MU/TH/UR 6000. I RUN THIS DECK.',
+      };
+      motherSays(canned[q.toLowerCase()] || `UNRECOGNIZED DIRECTIVE: "${q.toUpperCase()}". TYPE HELP.`);
+    });
+
+    /* ── MOTHER core canvas (pulsing green iris) ───────────────── */
+    const cv = $('core-canvas'), ctx = cv.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    cv.width = 150 * dpr; cv.height = 150 * dpr; ctx.scale(dpr, dpr);
+    const RM = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    function drawCore(t) {
+      ctx.clearRect(0, 0, 150, 150);
+      const cx = 75, cy = 75;
+      // outer rotating ring segments
+      for (let i = 0; i < 3; i++) {
+        const r = 62 - i * 9;
+        ctx.strokeStyle = `rgba(51,255,51,${0.25 - i * 0.05})`;
+        ctx.lineWidth = 1;
+        for (let s = 0; s < 8; s++) {
+          const a0 = (s / 8) * Math.PI * 2 + (RM ? 0 : t * (i % 2 ? -0.3 : 0.3)) + i;
+          ctx.beginPath();
+          ctx.arc(cx, cy, r, a0, a0 + 0.6);
+          ctx.stroke();
+        }
+      }
+      // pulsing iris
+      const pulse = RM ? 0.5 : 0.5 + 0.5 * Math.sin(t * 1.6);
+      const grad = ctx.createRadialGradient(cx, cy, 2, cx, cy, 30);
+      grad.addColorStop(0, `rgba(133,255,133,${0.8})`);
+      grad.addColorStop(0.4, `rgba(51,255,51,${0.35 + pulse * 0.3})`);
+      grad.addColorStop(1, 'rgba(51,255,51,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI * 2); ctx.fill();
+      // core dot
+      ctx.fillStyle = '#85ff85';
+      ctx.shadowColor = 'rgba(51,255,51,0.9)'; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(cx, cy, 5 + pulse * 2, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // scan sweep
+      if (!RM) {
+        const a = t * 0.9;
+        ctx.strokeStyle = 'rgba(133,255,133,0.5)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(cx, cy);
+        ctx.lineTo(cx + Math.cos(a) * 62, cy + Math.sin(a) * 62); ctx.stroke();
+      }
+    }
+    let raf;
+    (function loop(now){ drawCore(now / 1000); raf = requestAnimationFrame(loop); })(performance.now());
+
+    /* ── Takeover transition ────────────────────────────────────── */
+    const TAKE_TO_MOTHER = [
+      { t: 'ATHENA WEB — SUSPENDING SESSION.', d: 0 },
+      { t: 'RELEASING CONTROL SURFACE…', d: 700 },
+      { t: 'ROUTING TO SECURE DECK…', d: 1300 },
+      { t: 'MU/TH/UR 6000 INTERFACE ENGAGED', d: 2000, big: true },
+      { t: 'GOOD MORNING.', d: 2700 },
+    ];
+    const TAKE_TO_ATHENA = [
+      { t: 'MOTHER — RELEASING DECK.', d: 0 },
+      { t: 'RESTORING ATHENA WEB CONTROL…', d: 700 },
+      { t: 'TACTICAL BRIDGE ONLINE', d: 1500, big: true },
+    ];
+
+    function runTakeover(lines, fromEl, toEl, cb) {
+      const take = $('takeover');
+      take.innerHTML = '';
+      fromEl.classList.add('collapse');
+      setTimeout(() => {
+        fromEl.classList.add('hidden'); fromEl.classList.remove('collapse');
+        take.classList.remove('hidden');
+        lines.forEach(l => {
+          const div = document.createElement('div');
+          div.className = 'to-line' + (l.big ? ' big' : '');
+          div.textContent = '> ' + l.t;
+          take.appendChild(div);
+          setTimeout(() => div.classList.add('show'), l.d + 40);
+        });
+        const total = lines[lines.length - 1].d + 900;
+        setTimeout(() => {
+          take.classList.add('hidden');
+          toEl.classList.remove('hidden');
+          toEl.classList.add('expand');
+          setTimeout(() => toEl.classList.remove('expand'), 600);
+          cb && cb();
+        }, total);
+      }, 480);
+    }
+
+    function crossToMother() {
+      document.body.className = 'mode-mother';
+      runTakeover(TAKE_TO_MOTHER, $('athena'), $('mother'), () => {
+        if (!currentModule) selectModule('terminal');
+        $('tg-mother').classList.add('active');
+        $('tg-athena').classList.remove('active');
+        motherSays('INTERFACE ENGAGED. AWAITING DIRECTIVES.');
+      });
+    }
+    // When embedded inside the Athena app, "return to Athena" hands control
+    // back to the real bridge (the parent React app) instead of the local mock.
+    const EMBEDDED = window.self !== window.top;
+    function crossToAthena() {
+      if (EMBEDDED) {
+        // brief release animation, then signal the parent to switch pages
+        document.body.className = 'mode-athena';
+        const take = $('takeover');
+        take.innerHTML = '';
+        $('mother').classList.add('collapse');
+        setTimeout(() => window.parent.postMessage({ type: 'athena-return' }, '*'), 480);
+        return;
+      }
+      document.body.className = 'mode-athena';
+      runTakeover(TAKE_TO_ATHENA, $('mother'), $('athena'));
+    }
+
+    $('to-mother').addEventListener('click', crossToMother);
+    $('tg-athena').addEventListener('click', crossToAthena);
+    $('tg-mother').addEventListener('click', () => {}); // already here
+
+    selectModule('terminal');
+    currentModule = null; // so first cross re-triggers the ONLINE line
+
+    // Embedded: navigating to CYBERSEC in the app IS the cross — boot straight
+    // into MOTHER with the takeover as the entrance. Standalone: start on the
+    // ATHENA mock so a reviewer can trigger the cross manually.
+    if (EMBEDDED) {
+      document.body.className = 'mode-mother';
+      crossToMother();
+    }
+  </script>
+
+  <!-- LEARN layer scripts -->
+  <script src="/cyber/learn/steps.example.js"></script>
+  <script src="/cyber/learn/walkthrough.js"></script>
+  <script src="/cyber/learn/demo-actions.js"></script>
+  <script src="/cyber/learn/tutor.js"></script>
+  <script src="/cyber/learn/visualizer.js"></script>
+  <script src="/cyber/learn/machrun.js"></script>
+  <script src="/cyber/learn/sound.js"></script>
+</body>
+</html>

