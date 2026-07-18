@@ -1,18 +1,23 @@
-# MOTHER Deck — Athena (full system, private)
+# MOTHER Deck — Athena (full system)
 
 ![MOTHER cyber deck](media/cyber-deck-preview.jpeg)
 
-▶ **[Watch the deck demo video](media/cyber-demo.mp4)** — GitHub plays it in the browser.
+### Deck demo
+
+<video src="https://raw.githubusercontent.com/piercewalker74-ops/mother-deck/master/media/cyber-demo.mp4" controls muted playsinline poster="https://raw.githubusercontent.com/piercewalker74-ops/mother-deck/master/media/cyber-deck-preview.jpeg" width="100%"></video>
+
+▶ If the player above doesn't load, [watch / download the demo video directly](https://raw.githubusercontent.com/piercewalker74-ops/mother-deck/master/media/cyber-demo.mp4).
 
 Private, scrubbed backup of the complete Athena system: the **web-builder
 pipeline** plus the **MOTHER cybersecurity deck** (a personal red/blue learning
 lab). Secrets, API keys, client data, and finished client sites have been
 removed; the code and lab tooling are intact.
 
-> **Private repository.** This includes offensive security tooling intended
+> **Authorized use only.** This includes offensive security tooling intended
 > **only** for use against systems you own or are explicitly authorized to test
-> (your own lab VMs, CTF targets, engagements with permission). It is kept private
-> deliberately and is not for public distribution.
+> (your own lab VMs, CTF targets, engagements with permission). Educational /
+> defensive purpose — do not point it at systems you do not own or have written
+> permission to test.
 
 ---
 
